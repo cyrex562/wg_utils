@@ -1,0 +1,10 @@
+[Interface]
+Address = {{ client_virtual_ip }}
+PrivateKey = {{ client_private_key }}
+ListenPort = {{ client_listen_port }}
+
+[Peer]
+PublicKey = {{ server_public_key }}
+Endpoint = {{ server_public_ip }}:{{ server_port }}
+AllowedIPs = {{ routed_traffic_nets }}
+PersistentKeepalive = {{ persistent_keepalive }}
