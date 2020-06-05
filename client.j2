@@ -1,10 +1,24 @@
 [Interface]
+# client's virtual IP address
 Address = {{ client_virtual_ip }}
+# client's private key
 PrivateKey = {{ client_private_key }}
-ListenPort = {{ client_listen_port }}
+# DNS = 
+{{ dns }}
+# Table = 
+{{ table }}
+# MTU
+{{ mtu }}
+
 
 [Peer]
+# server common name
+# Name = {{ peer_name }}
+# server public key
 PublicKey = {{ server_public_key }}
+# server public IP address and port
 Endpoint = {{ server_public_ip }}:{{ server_port }}
+# allowed traffic destinations from client to server
 AllowedIPs = {{ routed_traffic_nets }}
+# interval in seconds between keepalive packets
 PersistentKeepalive = {{ persistent_keepalive }}

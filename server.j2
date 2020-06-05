@@ -1,4 +1,20 @@
-[interface]
-Address = {{ server_address }}
-PrivateKey = {{ server_private_key }}
-ListenPort = {{ server_listen_port }}
+[Interface]
+Address = {{ address }}
+PrivateKey = {{ private_key }}
+ListenPort = {{ listen_port }}
+# PreUp =
+{{ pre_up }}
+# PostUp = 
+{{ post_up }}
+# PreDown = 
+{{ pre_down }}
+# PostDown = 
+{{ post_down }}
+# MTU = 
+{{ mtu }}
+# Table = 
+{{ table }}
+# DNS = comma-separated list of DNS servers
+{{ dns }}
+
+# peers
