@@ -18,3 +18,5 @@ fern = "*"
 serde = {  version = "*", features = ["derive"]}
 serde_json = "*"
 tera = "*"
+clap = "*"
+lazy_static = "*"
