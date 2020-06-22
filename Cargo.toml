@@ -10,7 +10,11 @@ name = "wg_controller"
 [dependencies]
 actix-web = "*"
 actix-rt = "*"
+actix-files = "*"
+actix-session = "*"
+actix-utils = "*"
 log = "*"
 fern = "*"
 serde = {  version = "*", features = ["derive"]}
 serde_json = "*"
+tera = "*"

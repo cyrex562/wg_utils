@@ -1,0 +1,9 @@
+[Peer]
+{% if set_endpoint == true %}
+Endpoint = {{ endpoint }}
+{% endif %}
+PublicKey = {{ public_key }}
+AllowedIPs = {{ allowed_ips }}
+{% if set_keepalive == true %}
+PersistentKeepalive = {{ keepalive }}
+{% endif %}

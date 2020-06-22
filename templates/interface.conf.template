@@ -1,0 +1,35 @@
+[Interface]
+# Peer's virtual Address
+Address = {{ virtual_ip }}/{{ mask }}
+# Peer's listen port
+ListenPort = {{ listen_port }}
+# Peer's private key
+PrivateKey = {{ private_key }}
+{% if set_dns == True %}
+# DNS server to use
+DNS = {{ dns_server }}
+{% endif %}
+{% if set_table_off == true %}
+Table = off
+{% else if set_table_value == true %}
+Table = {{ table }}
+{% else %}
+Table = auto
+{% endif %}
+{%if set_mtu == true %}
+MTU = {{ mtu }}
+{%endif%}
+{%if set_pre_up == true %}
+PreUp = {{ pre_up }}
+{%endif%}
+{%if set_pre_down == true %}
+PreDown = {{ pre_down }}
+{%endif%}
+{%if set_post_up == true %}
+PostUp = {{ post_up }}
+{%endif%}
+{%if set_post_down == true %}
+PostDown == {{ post_down }}
+{%endif%}
+
+# Peers 
