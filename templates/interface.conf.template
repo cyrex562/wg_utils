@@ -5,31 +5,20 @@ Address = {{ virtual_ip }}/{{ mask }}
 ListenPort = {{ listen_port }}
 # Peer's private key
 PrivateKey = {{ private_key }}
-{% if set_dns == True %}
 # DNS server to use
-DNS = {{ dns_server }}
-{% endif %}
-{% if set_table_off == true %}
-Table = off
-{% else if set_table_value == true %}
-Table = {{ table }}
-{% else %}
-Table = auto
-{% endif %}
-{%if set_mtu == true %}
-MTU = {{ mtu }}
-{%endif%}
-{%if set_pre_up == true %}
-PreUp = {{ pre_up }}
-{%endif%}
-{%if set_pre_down == true %}
-PreDown = {{ pre_down }}
-{%endif%}
-{%if set_post_up == true %}
-PostUp = {{ post_up }}
-{%endif%}
-{%if set_post_down == true %}
-PostDown == {{ post_down }}
-{%endif%}
-
-# Peers 
+{% if set_dns == True %}DNS = {{ dns_server }}{% else %}# DNS ={% endif %}
+# Routing table
+{% if set_table_off == true %}Table = off
+{% elif set_table_value == true %}Table = {{ table }}
+{% else %}# Table = auto{% endif %}
+# link MTU
+{% if set_mtu == true %}MTU = {{ mtu }}{% else %}# MTU ={%endif%}
+# Pre-Up command/script
+{%if set_pre_up == true %}PreUp = {{ pre_up }}{% else %}# PreUp ={%endif%}
+# Pre-Down command/script
+{%if set_pre_down == true %}PreDown = {{ pre_down }}{% else %}# PreDown ={%endif%}
+# Post-Up command/script
+{%if set_post_up == true %}PostUp = {{ post_up }}{% else %}# PostUp ={%endif%}
+# Post-down command/script
+{%if set_post_down == true %}PostDown == {{ post_down }}{% else %}# PostDown ={%endif%}
+# Peers

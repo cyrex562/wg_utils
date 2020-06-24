@@ -2055,6 +2055,7 @@ dependencies = [
  "actix-session",
  "actix-utils",
  "actix-web",
+ "chrono",
  "clap",
  "fern",
  "lazy_static",
