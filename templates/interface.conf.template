@@ -1,6 +1,6 @@
 [Interface]
 # Peer's virtual Address
-Address = {{ virtual_ip }}/{{ mask }}
+Address = {{ address }}
 # Peer's listen port
 ListenPort = {{ listen_port }}
 # Peer's private key

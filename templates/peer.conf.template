@@ -1,9 +1,5 @@
 [Peer]
-{% if set_endpoint == true %}
-Endpoint = {{ endpoint }}
-{% endif %}
+{% if set_endpoint == true %}Endpoint = {{ endpoint }}{% else %}# Endpoint = {% endif %}
 PublicKey = {{ public_key }}
 AllowedIPs = {{ allowed_ips }}
-{% if set_keepalive == true %}
-PersistentKeepalive = {{ keepalive }}
-{% endif %}
+{% if set_keepalive == true %}PersistentKeepalive = {{ keepalive }}{% else %}# PersistentKeepalive = {% endif %}
