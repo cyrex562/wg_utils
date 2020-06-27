@@ -1,20 +1,16 @@
+mod defines;
+
+use crate::defines::{Config, GenInterfaceRequest, GenInterfaceResponse, GenPeerRequest, GenPeerResponse, GenPrivKeyResponse, GenPubKeyRequest, GenPubKeyResponse, GetInterfaceResponse, GetInterfacesResponse, WgcError, DEF_CONTROLLER_PORT, DFLT_CONFIG_FILE, DFLT_KEEPALIVE, DFLT_WG_PORT, WgInterface, WgPeer};
 use actix_files as fs;
-use actix_rt;
 use actix_web::error as web_error;
 use actix_web::http::{header, StatusCode};
-
 use actix_web::Result as WebResult;
-use actix_web::{
-    guard, middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
-};
-use chrono;
-use clap;
+use actix_web::{guard, middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use lazy_static::lazy_static;
 use log::{debug, error, info};
-use serde::{Serialize, Deserialize};
-use std::fmt;
 use std::fs::File;
 use std::io;
+use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 use std::process::Command;
@@ -22,82 +18,7 @@ use std::process::Stdio;
 use std::result::Result as std_result;
 use std::str;
 use tera::{Context, Tera};
-
-///
-/// Custom error thrown by functions
-///
-#[derive(Debug)]
-struct WgcError {
-    message: String,
-}
-
-impl fmt::Display for WgcError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "message: {}", self.message)
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct GenPubKeyRequest {
-    private_key: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct GenPrivKeyResponse {
-    private_key: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct GenPubKeyResponse {
-    public_key: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct GetInterfacesResponse {
-    interfaces: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct GetInterfaceResponse {
-    interface: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct GenInterfaceRequest {
-    private_key: Option<String>,
-    address: String,
-    listen_port: Option<u32>,
-    dns: Option<String>,
-    mtu: Option<u32>,
-    table: Option<String>,
-    pre_up: Option<String>,
-    post_up: Option<String>,
-    pre_down: Option<String>,
-    post_down: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct GenInterfaceResponse {
-    interface_config: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct GenPeerRequest {
-    endpoint: Option<String>,
-    public_key: String,
-    allowed_ips: Vec<String>,
-    persistent_keepalive: Option<u32>
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct GenPeerResponse {
-    peer_conf: String
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct RemovePeerRequest {
-    public_key: String
-}
+use kv;
 
 lazy_static! {
     pub static ref TEMPLATES: Tera = {
@@ -113,21 +34,10 @@ lazy_static! {
     };
 }
 
-const DEF_CONTROLLER_PORT: &str = "8120";
-const DEF_CONTROLLER_ADDR: &str = "127.0.0.1";
-const DFLT_WG_PORT: u32 = 51820;
-const DFLT_KEEPALIVE: u32 = 25;
-
 ///
 /// Initialize the fern logger
-/// 
+///
 fn init_logger() -> Result<(), fern::InitError> {
-    // let formatter = syslog::Formatter3164 {
-    //     facility: syslog::Facility::LOG_USER,
-    //     hostname: None,
-    //     process: "prism_tank".to_owned(),
-    //     pid: 0,
-    // };
     fern::Dispatch::new()
         .chain(
             fern::Dispatch::new()
@@ -143,11 +53,6 @@ fn init_logger() -> Result<(), fern::InitError> {
                 })
                 .chain(std::io::stdout()),
         )
-        // .chain(
-        //     fern::Dispatch::new()
-        //         .level(log::LevelFilter::Info)
-        //         .chain(syslog::unix(syslog::Facility::LOG_USER)?)
-        // )
         .apply()?;
 
     Ok(())
@@ -157,18 +62,20 @@ fn init_logger() -> Result<(), fern::InitError> {
 /// Generate an interface configuration
 ///
 fn gen_interface_conf(
-    private_key: &String,
-    address: &String,
+    private_key: &str,
+    address: &str,
     listen_port: &u32,
 ) -> Result<String, WgcError> {
-    let key_str = private_key.clone();
+    let key_str = private_key;
     let key_part = key_str.get(0..3).unwrap();
-    debug!("generating interface config: private key: {}..., address: {}, listen_port: {}\n",
-key_part, &address, &listen_port);
+    debug!(
+        "generating interface config: private key: {}..., address: {}, listen_port: {}\n",
+        key_part, &address, &listen_port
+    );
     let mut ctx = Context::new();
-    ctx.insert("address", address.as_str());
+    ctx.insert("address", address);
     ctx.insert("listen_port", listen_port);
-    ctx.insert("private_key", private_key.as_str());
+    ctx.insert("private_key", private_key);
     ctx.insert("set_dns", &false);
     ctx.insert("set_table_off", &false);
     ctx.insert("set_table_value", &false);
@@ -193,19 +100,22 @@ key_part, &address, &listen_port);
 /// Generate a peer config
 ///
 fn gen_peer_conf(
-    public_key: &String,
-    allowed_ips: &Vec<String>,
+    public_key: &str,
+    allowed_ips: &[String],
     endpoint: &Option<String>,
     keepalive: &Option<u32>,
 ) -> Result<String, WgcError> {
-    let key_str = public_key.clone();
+    let key_str = public_key;
     let key_part = key_str.get(0..3).unwrap();
     let set_endpoint = endpoint.is_some();
-    let ep = endpoint.clone().unwrap_or("".to_string());
+    let ep = endpoint.clone().unwrap_or_else(|| "".to_string());
     let ka: u32 = keepalive.unwrap_or(25);
     let allowed_ips_joined = allowed_ips.join(",v");
     let set_keepalive = keepalive.is_none();
-    debug!("generating peer config: key: \"{}\", endpoint: \"{}\" allowed_ips: \"{}\"", key_part, ep, allowed_ips_joined);
+    debug!(
+        "generating peer config: key: \"{}\", endpoint: \"{}\" allowed_ips: \"{}\"",
+        key_part, ep, allowed_ips_joined
+    );
     let mut ctx: Context = Context::new();
     ctx.insert("set_endpoint", &set_endpoint);
     if set_endpoint {
@@ -213,7 +123,7 @@ fn gen_peer_conf(
     }
     ctx.insert("public_key", &public_key);
     ctx.insert("allowed_ips", &allowed_ips_joined);
-    ctx.insert( "set_keepalive", &set_keepalive);
+    ctx.insert("set_keepalive", &set_keepalive);
     if set_keepalive {
         ctx.insert("keepalive", &ka);
     }
@@ -222,7 +132,9 @@ fn gen_peer_conf(
         Ok(s) => Ok(s),
         Err(e) => {
             error!("failed to render peer conf template: {:?}", e);
-            Err(WgcError {message: format!("failed to render peer conf template: {:?}", e)})
+            Err(WgcError {
+                message: format!("failed to render peer conf template: {:?}", e),
+            })
         }
     }
 }
@@ -237,7 +149,7 @@ fn gen_private_key() -> Result<String, WgcError> {
         .output()
         .expect("failed to execute command");
     if output.status.success() {
-        let mut priv_key = output.stdout.clone();
+        let mut priv_key = output.stdout;
         priv_key.pop().unwrap();
         Ok(String::from_utf8(priv_key).unwrap())
     } else {
@@ -255,7 +167,7 @@ fn gen_private_key() -> Result<String, WgcError> {
 ///
 /// Generate a Wireguard public key from a private key
 ///
-fn gen_public_key(private_key: &String) -> std_result<String, WgcError> {
+fn gen_public_key(private_key: &str) -> std_result<String, WgcError> {
     let mut child = match Command::new("sudo")
         .arg("wg")
         .arg("pubkey")
@@ -274,7 +186,7 @@ fn gen_public_key(private_key: &String) -> std_result<String, WgcError> {
         Some(si) => si,
         None => {
             return Err(WgcError {
-                message: format!("failed to get child stdin"),
+                message: "failed to get child stdin".to_string(),
             })
         }
     };
@@ -298,7 +210,7 @@ fn gen_public_key(private_key: &String) -> std_result<String, WgcError> {
     };
 
     if output.status.success() {
-        let mut pub_key = output.stdout.clone();
+        let mut pub_key = output.stdout;
         pub_key.pop().unwrap();
         return Ok(String::from_utf8(pub_key).unwrap());
     }
@@ -317,19 +229,26 @@ fn gen_public_key(private_key: &String) -> std_result<String, WgcError> {
 /// Create a WireGuard interface
 ///
 fn create_interface(
-    ifc_name: &String,
-    address: &String,
+    cfg: web::Data<Config>,
+    ifc_name: &str,
+    address: &str,
     listen_port: &u32,
-    private_key: &String,
+    private_key: &str,
 ) -> Result<(), WgcError> {
     // TODO: support dns, mtu, table, and pre/post up/down
-    // let private_key: String = gen_private_key()?;
     let ifc_conf_data = gen_interface_conf(&private_key, address, listen_port)?;
     let ifc_cfg_file = format!("{}.conf", ifc_name);
     let ifc_cfg_tmp_path = format!("/tmp/{}", ifc_cfg_file);
     let ifc_cfg_wg_path = format!("/etc/wireguard/{}", ifc_cfg_file);
 
-    if Path::new(&ifc_cfg_wg_path).exists() == true {
+    let mut wg_ifc = WgInterface::default();
+    wg_ifc.config_file_path = ifc_cfg_wg_path.clone();
+    wg_ifc.name = ifc_name.to_string().clone();
+    wg_ifc.private_key = private_key.to_string().clone();
+    wg_ifc.address = address.to_string().clone();
+    wg_ifc.listen_port = *listen_port;
+
+    if Path::new(&ifc_cfg_wg_path).exists() {
         return Err(WgcError {
             message: format!("interface config at {} already exists", &ifc_cfg_wg_path),
         });
@@ -359,7 +278,7 @@ fn create_interface(
         .arg(&ifc_cfg_wg_path)
         .output()
         .expect("failed to execute command");
-    if output.status.success()  == false {
+    if !output.status.success() {
         return Err(WgcError {
             message: format!(
                 "failed to copy tmp file to wg config dir: status: {}, stdout: {}, stderr: {}",
@@ -367,7 +286,7 @@ fn create_interface(
                 str::from_utf8(&output.stdout).unwrap(),
                 str::from_utf8(&output.stderr).unwrap()
             ),
-        })
+        });
     }
 
     output = Command::new("sudo")
@@ -377,20 +296,26 @@ fn create_interface(
         // .arg(info.name.clone())
         .output()
         .expect("failed to execute command");
-    if output.status.success() == false {
+    if !output.status.success() {
         let output_str = str::from_utf8(&output.stdout).unwrap();
         let err_str = str::from_utf8(&output.stderr).unwrap();
-        return Err(WgcError { message: format!(
-            "failed to set wg interface to config file: stdout: \"{}\", stderr: \"{}\"",
-            &output_str, &err_str)});
+        return Err(WgcError {
+            message: format!(
+                "failed to set wg interface to config file: stdout: \"{}\", stderr: \"{}\"",
+                &output_str, &err_str
+            ),
+        });
     }
+
+    cfg.interfaces.push(wg_ifc);
+
     info!("interface {} created", &ifc_name);
     Ok(())
 }
 
 ///
 /// Gets a list of Wireguard interfaces present on the system
-/// 
+///
 async fn handle_get_interfaces() -> HttpResponse {
     let output = Command::new("sudo")
         .arg("wg")
@@ -400,21 +325,26 @@ async fn handle_get_interfaces() -> HttpResponse {
         .expect("failed to execute command");
     let output_str = String::from_utf8(output.stdout).unwrap();
     let err_str = String::from_utf8(output.stderr).unwrap();
-    if output.status.success() == false {
-        error!("failed to get interfaces: stdout: {}, stderr: {}", &output_str, &err_str);
-        return HttpResponse::InternalServerError().reason("failed to get interfaces").finish();
+    if !output.status.success() {
+        error!(
+            "failed to get interfaces: stdout: {}, stderr: {}",
+            &output_str, &err_str
+        );
+        return HttpResponse::InternalServerError()
+            .reason("failed to get interfaces")
+            .finish();
     }
     // TODO: parse ouptut into proper JSON object
 
-    let resp = GetInterfacesResponse { interfaces: output_str };
+    let resp = GetInterfacesResponse {
+        interfaces: output_str,
+    };
     HttpResponse::Ok().json(resp)
-
 }
 
 ///
 /// Gets information about a specific interface
 ///
-
 async fn handle_get_interface(info: web::Path<String>) -> HttpResponse {
     // todo: validate interface name
     let interface_name = info;
@@ -430,18 +360,19 @@ async fn handle_get_interface(info: web::Path<String>) -> HttpResponse {
         .expect("failed to execute process");
     let output_str = str::from_utf8(&output.stdout).unwrap();
     let err_str = str::from_utf8(&output.stderr).unwrap();
-    if output.status.success() == false {
+    if !output.status.success() {
         error!(
             "failed to get interface information: stdout: \"{}\", stderr: \"{}\"",
-            output_str.clone(),
-            err_str.clone()
+            &output_str, &err_str
         );
         return HttpResponse::BadRequest()
             .reason("failed to get interface info by name")
             .finish();
     }
     debug!("interface info: \"{}\"", &output_str);
-    let resp = GetInterfaceResponse { interface: output_str.to_string() };
+    let resp = GetInterfaceResponse {
+        interface: output_str.to_string(),
+    };
     HttpResponse::Ok().json(resp)
 }
 
@@ -451,15 +382,19 @@ async fn handle_get_interface(info: web::Path<String>) -> HttpResponse {
 async fn handle_gen_ifc_cfg(info: web::Json<GenInterfaceRequest>) -> impl Responder {
     let ifc_req = info.0;
 
-    let priv_key = ifc_req.private_key.unwrap_or(gen_private_key().unwrap());
+    let priv_key = ifc_req
+        .private_key
+        .unwrap_or_else(|| gen_private_key().unwrap());
     let port = ifc_req.listen_port.unwrap_or(DFLT_WG_PORT);
     // TODO: handle dns, mut, table, pre/post up/down
     match gen_interface_conf(&priv_key, &ifc_req.address, &port) {
         Ok(conf) => {
             debug!("generated interface configuration:\"\n{}\"", &conf);
-            let resp = GenInterfaceResponse { interface_config: conf};
+            let resp = GenInterfaceResponse {
+                interface_config: conf,
+            };
             HttpResponse::Ok().json(resp)
-        },
+        }
         Err(e) => {
             error!("failed to generate config: {:?}", e);
             HttpResponse::InternalServerError()
@@ -510,31 +445,39 @@ async fn handle_gen_pub_key(info: web::Json<GenPubKeyRequest>) -> impl Responder
 
 ///
 /// Route handler for creating a Wireguard interface
-/// 
-async fn handle_create_interface(path: web::Path<String>, info: web::Json<GenInterfaceRequest>) -> HttpResponse {
+///
+async fn handle_create_interface(
+    path: web::Path<String>,
+    info: web::Json<GenInterfaceRequest>,
+    web_cfg: web::Data<Config>,
+) -> HttpResponse {
     let req = info.0;
-    let private_key = req.private_key.unwrap_or(gen_private_key().unwrap());
+    let private_key = req
+        .private_key
+        .unwrap_or_else(|| gen_private_key().unwrap());
     let ifc_name = path.to_string();
     let port = req.listen_port.unwrap_or(DFLT_WG_PORT);
-    
-    match create_interface(&ifc_name, &req.address, &port, &private_key) {
+
+    match create_interface(web_cfg, &ifc_name, &req.address, &port, &private_key) {
         Ok(()) => {
             debug!("interface created");
-            return HttpResponse::Ok().reason("interface created").finish()
-        },
+            HttpResponse::Ok().reason("interface created").finish()
+        }
         Err(e) => {
             error!("failed to create interface: {:?}", e);
-            return HttpResponse::InternalServerError().reason("failed to create interface").finish()
+            HttpResponse::InternalServerError()
+                .reason("failed to create interface")
+                .finish()
         }
     }
 }
 
 ///
 /// Route handler for removing an interface
-/// 
+///
 async fn handle_remove_interface(info: web::Path<String>) -> HttpResponse {
     let interface_name = info.to_string();
-    info!("request  remove interface with name: {}", interface_name.clone());
+    info!("request  remove interface with name: {}", &interface_name);
 
     let mut output = Command::new("sudo")
         .arg("wg-quick")
@@ -544,9 +487,14 @@ async fn handle_remove_interface(info: web::Path<String>) -> HttpResponse {
         .expect("failed to execute command");
     let std_out_str = str::from_utf8(&output.stdout).unwrap();
     let std_err_str = str::from_utf8(&output.stderr).unwrap();
-    if output.status.success() == false {
-        error!("failed to down wg interface {}, stdout: \"{}\", stderr: \"{}\"", interface_name.clone(), std_out_str, std_err_str);
-        return HttpResponse::InternalServerError().reason("failed to down WG interface").finish();
+    if !output.status.success() {
+        error!(
+            "failed to down wg interface {}, stdout: \"{}\", stderr: \"{}\"",
+            interface_name, std_out_str, std_err_str
+        );
+        return HttpResponse::InternalServerError()
+            .reason("failed to down WG interface")
+            .finish();
     }
 
     let ifc_wg_cfg_path = format!("/etc/wireguard/{}.conf", interface_name);
@@ -557,70 +505,97 @@ async fn handle_remove_interface(info: web::Path<String>) -> HttpResponse {
         .expect("failed to execute command");
     let std_out_str = str::from_utf8(&output.stdout).unwrap();
     let std_err_str = str::from_utf8(&output.stderr).unwrap();
-    if output.status.success() == false {
-        error!("failed to delete interface {} config, stdout: \"{}\", stderr: \"{}\"", interface_name, std_out_str, std_err_str);
-        return HttpResponse::InternalServerError().reason("failed to delete WG interface config").finish();
+    if !output.status.success() {
+        error!(
+            "failed to delete interface {} config, stdout: \"{}\", stderr: \"{}\"",
+            interface_name, std_out_str, std_err_str
+        );
+        return HttpResponse::InternalServerError()
+            .reason("failed to delete WG interface config")
+            .finish();
     }
 
     info!("interface {} removed", interface_name);
-    return HttpResponse::Ok().reason("interface removed").finish();
+    HttpResponse::Ok().reason("interface removed").finish()
 }
 
+///
+/// Route handler to generate a peer config
+///
 async fn handle_gen_peer(info: web::Json<GenPeerRequest>) -> HttpResponse {
     let req = info.0;
-    match gen_peer_conf(&req.public_key, &req.allowed_ips, &req.endpoint, &req.persistent_keepalive) {
+    match gen_peer_conf(
+        &req.public_key,
+        &req.allowed_ips,
+        &req.endpoint,
+        &req.persistent_keepalive,
+    ) {
         Ok(pc) => {
             let resp = GenPeerResponse { peer_conf: pc };
             HttpResponse::Ok().json(resp)
-        },
+        }
         Err(e) => {
-            error!("failed to generate peer conf: {:?}",e);
-            HttpResponse::InternalServerError().reason("failed to generate peer conf").finish()
+            error!("failed to generate peer conf: {:?}", e);
+            HttpResponse::InternalServerError()
+                .reason("failed to generate peer conf")
+                .finish()
         }
     }
 }
 
-async fn handle_add_peer(info: web::Json<GenPeerRequest>, path: web::Path<String>) -> HttpResponse
-{
+///
+/// Route handler to add peer to an interface
+///
+async fn handle_add_peer(info: web::Json<GenPeerRequest>, path: web::Path<String>) -> HttpResponse {
     let ifc_name = path.to_string();
     let req = info.0;
 
     // add config to
-    let mut output: std::process::Output;
-    if req.endpoint.is_some() {
-        output = Command::new("sudo")
-        .arg("wg")
-        .arg("set")
-        .arg(&ifc_name)
-        .arg("peer")
-        .arg(&req.public_key)
-        .arg("endpoint")
-        .arg(&req.endpoint.unwrap())
-        .arg("persistent-keepalive")
-        .arg(format!("{}", req.persistent_keepalive.unwrap_or(DFLT_KEEPALIVE)))
-        .arg("allowed-ips")
-        .arg(&req.allowed_ips.join(","))
-        .output()
-        .expect("failed to execute command");        
+    let mut output = if req.endpoint.is_some() {
+        Command::new("sudo")
+            .arg("wg")
+            .arg("set")
+            .arg(&ifc_name)
+            .arg("peer")
+            .arg(&req.public_key)
+            .arg("endpoint")
+            .arg(&req.endpoint.unwrap())
+            .arg("persistent-keepalive")
+            .arg(format!(
+                "{}",
+                req.persistent_keepalive.unwrap_or(DFLT_KEEPALIVE)
+            ))
+            .arg("allowed-ips")
+            .arg(&req.allowed_ips.join(","))
+            .output()
+            .expect("failed to execute command")
     } else {
-        output = Command::new("sudo")
-        .arg("wg")
-        .arg("set")
-        .arg(&ifc_name)
-        .arg("peer")
-        .arg(&req.public_key)
-        .arg("persistent-keepalive")
-        .arg(format!("{}", req.persistent_keepalive.unwrap_or(DFLT_KEEPALIVE)))
-        .arg("allowed-ips")
-        .arg(&req.allowed_ips.join(","))
-        .output()
-        .expect("failed to execute command");        
-    }
+        Command::new("sudo")
+            .arg("wg")
+            .arg("set")
+            .arg(&ifc_name)
+            .arg("peer")
+            .arg(&req.public_key)
+            .arg("persistent-keepalive")
+            .arg(format!(
+                "{}",
+                req.persistent_keepalive.unwrap_or(DFLT_KEEPALIVE)
+            ))
+            .arg("allowed-ips")
+            .arg(&req.allowed_ips.join(","))
+            .output()
+            .expect("failed to execute command")
+    };
 
-    if output.status.success() == false {
-        error!("failed to add peer to config: stdout: {}, stderr: {}", str::from_utf8(output.stdout.as_slice()).unwrap(),
-    str::from_utf8(output.stderr.as_slice()).unwrap());
-        return HttpResponse::InternalServerError().reason("failed to add peer to config").finish();
+    if !output.status.success() {
+        error!(
+            "failed to add peer to config: stdout: {}, stderr: {}",
+            str::from_utf8(output.stdout.as_slice()).unwrap(),
+            str::from_utf8(output.stderr.as_slice()).unwrap()
+        );
+        return HttpResponse::InternalServerError()
+            .reason("failed to add peer to config")
+            .finish();
     }
 
     output = Command::new("sudo")
@@ -629,18 +604,27 @@ async fn handle_add_peer(info: web::Json<GenPeerRequest>, path: web::Path<String
         .arg(&ifc_name)
         .output()
         .expect("failed execute command");
-    if output.status.success() == false {
-        error!("failed to save interface state to config: stdout: {}, stderr: {}", str::from_utf8(output.stdout.as_slice()).unwrap(),
-        str::from_utf8(output.stderr.as_slice()).unwrap());
-        return HttpResponse::InternalServerError().reason("failed to save interface config").finish();
+    if !output.status.success() {
+        error!(
+            "failed to save interface state to config: stdout: {}, stderr: {}",
+            str::from_utf8(output.stdout.as_slice()).unwrap(),
+            str::from_utf8(output.stderr.as_slice()).unwrap()
+        );
+        return HttpResponse::InternalServerError()
+            .reason("failed to save interface config")
+            .finish();
     }
 
     HttpResponse::Ok().reason("peer added to config").finish()
 }
 
+///
+/// Route handler to remove peer from an interface
+///
 async fn handle_remove_peer(
-    info: web::Json<RemovePeerRequest>, 
-    path: web::Path<String>) -> HttpResponse {
+    info: web::Json<GenPeerRequest>,
+    path: web::Path<String>,
+) -> HttpResponse {
     let req = info.0;
     let ifc_name = path.to_string();
     let output = Command::new("sudo")
@@ -651,12 +635,16 @@ async fn handle_remove_peer(
         .arg(&req.public_key)
         .arg("remove")
         .output()
-        .expect("failed to execute command");   
-    if output.status.success() == false {
-        error!("failed to remove peer from interface: stdout: {}, stderr: {}",
-        str::from_utf8(output.stdout.as_slice()).unwrap(),
-        str::from_utf8(output.stderr.as_slice()).unwrap());
-        return HttpResponse::InternalServerError().reason("failed to remove peer from interface").finish();
+        .expect("failed to execute command");
+    if !output.status.success() {
+        error!(
+            "failed to remove peer from interface: stdout: {}, stderr: {}",
+            str::from_utf8(output.stdout.as_slice()).unwrap(),
+            str::from_utf8(output.stderr.as_slice()).unwrap()
+        );
+        return HttpResponse::InternalServerError()
+            .reason("failed to remove peer from interface")
+            .finish();
     }
 
     let output = Command::new("sudo")
@@ -665,10 +653,15 @@ async fn handle_remove_peer(
         .arg(&ifc_name)
         .output()
         .expect("failed execute command");
-    if output.status.success() == false {
-        error!("failed to save interface state to config: stdout: {}, stderr: {}", str::from_utf8(output.stdout.as_slice()).unwrap(),
-        str::from_utf8(output.stderr.as_slice()).unwrap());
-        return HttpResponse::InternalServerError().reason("failed to save interface config").finish();
+    if !output.status.success() {
+        error!(
+            "failed to save interface state to config: stdout: {}, stderr: {}",
+            str::from_utf8(output.stdout.as_slice()).unwrap(),
+            str::from_utf8(output.stderr.as_slice()).unwrap()
+        );
+        return HttpResponse::InternalServerError()
+            .reason("failed to save interface config")
+            .finish();
     }
 
     HttpResponse::Ok().reason("peer added to config").finish()
@@ -678,8 +671,6 @@ async fn handle_remove_peer(
 async fn p404() -> WebResult<fs::NamedFile> {
     Ok(fs::NamedFile::open("static/404.html")?.set_status_code(StatusCode::NOT_FOUND))
 }
-
-
 
 ///
 /// Program entry point
@@ -709,11 +700,27 @@ async fn main() -> std::io::Result<()> {
             .help("enpoint IP address for client configs, generally public IP or IP of the internet-facing interface")
             .required(true)
             .takes_value(true))
+        .arg(clap::Arg::with_name("config")
+            .short("c")
+            .long("config")
+            .value_name("CONFIG_FILE")
+            .help("path to a configuration file to use")
+            .takes_value(true))
         .get_matches();
 
     let controller_port = matches.value_of("port").unwrap_or(DEF_CONTROLLER_PORT);
-    let controller_addr = matches.value_of("address").unwrap_or(DEF_CONTROLLER_ADDR);
-    println!(
+    let controller_addr = matches.value_of("address").unwrap_or(DEF_CONTROLLER_PORT);
+    let config_file = matches.value_of("config").unwrap_or(DFLT_CONFIG_FILE);   
+    
+    let kv_config = kv::Config::new(config_file);
+    let store = match kv::Store::new(kv_config) {
+        Ok(st) => st,
+        Err(e) => panic!("failed to setup KV store: {:?}", e),
+    };
+
+    let web_store = web::Data::new(store);
+    
+    debug!(
         "controller binding: {}:{}",
         controller_addr, controller_port
     );
@@ -726,19 +733,33 @@ async fn main() -> std::io::Result<()> {
         Err(e) => panic!("failed to init logger: {}", e),
     };
 
-    HttpServer::new(|| {
+    HttpServer::new(move || {
         App::new()
             .wrap(middleware::Logger::default())
+            .app_data(web_store.clone())
             .service(web::resource("/interfaces").route(web::get().to(handle_get_interfaces)))
             .service(web::resource("/utils/gen_priv_key").route(web::get().to(handle_gen_priv_key)))
             .service(web::resource("/utils/gen_pub_key").route(web::post().to(handle_gen_pub_key)))
-            .service(web::resource("/interfaces/{interface_name}").route(web::get().to(handle_get_interface)))
+            .service(
+                web::resource("/interfaces/{interface_name}")
+                    .route(web::get().to(handle_get_interface)),
+            )
             .service(web::resource("/interfaces").route(web::post().to(handle_gen_ifc_cfg)))
-            .service(web::resource("/interfaces/{interface_name}").route(web::post().to(handle_create_interface)))
-            .service(web::resource("/interfaces/{interface_name}").route(web::delete().to(handle_remove_interface)))
+            .service(
+                web::resource("/interfaces/{interface_name}")
+                    .route(web::post().to(handle_create_interface)),
+            )
+            .service(
+                web::resource("/interfaces/{interface_name}")
+                    .route(web::delete().to(handle_remove_interface)),
+            )
             .service(web::resource("/peers").route(web::post().to(handle_gen_peer)))
-            .service(web::resource("/peers/{interface_name}").route(web::post().to(handle_add_peer)))
-            .service(web::resource("/peers/{interface_name").route(web::delete().to(handle_remove_peer)))
+            .service(
+                web::resource("/peers/{interface_name}").route(web::post().to(handle_add_peer)),
+            )
+            .service(
+                web::resource("/peers/{interface_name").route(web::delete().to(handle_remove_peer)),
+            )
             .service(web::resource("/error").to(|| async {
                 web_error::InternalError::new(
                     io::Error::new(io::ErrorKind::Other, "test"),
