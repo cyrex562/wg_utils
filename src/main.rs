@@ -1,5 +1,6 @@
 mod defines;
 
+use kv::{Store, Msgpack};
 use crate::defines::{Config, GenInterfaceRequest, GenInterfaceResponse, GenPeerRequest, GenPeerResponse, GenPrivKeyResponse, GenPubKeyRequest, GenPubKeyResponse, GetInterfaceResponse, GetInterfacesResponse, WgcError, DEF_CONTROLLER_PORT, DFLT_CONFIG_FILE, DFLT_KEEPALIVE, DFLT_WG_PORT, WgInterface, WgPeer};
 use actix_files as fs;
 use actix_web::error as web_error;
@@ -19,6 +20,7 @@ use std::result::Result as std_result;
 use std::str;
 use tera::{Context, Tera};
 use kv;
+
 
 lazy_static! {
     pub static ref TEMPLATES: Tera = {
@@ -226,10 +228,84 @@ fn gen_public_key(private_key: &str) -> std_result<String, WgcError> {
 }
 
 ///
+/// 
+/// 
+// fn get_interfaces_from_store(store: web::Data<kv::Store>) -> 
+//     Result<kv::Iter<&str, Msgpack<WgInterface>>, WgcError> {
+//     let bucket = match store.bucket::<&str, Msgpack<WgInterface>>(Some("interfaces")) {
+//         Ok(b) => b,
+//         Err(e) => {
+//             error!("failed to get interfaces bucket: {:?}", e);
+//             return Err(WgcError {
+//                 message: format!("failed to get interfaces bucket: {:?}", e)
+//             })
+//         }
+//     };
+//     Ok(bucket.iter())
+// }
+
+///
+/// Adds an interface to the KV store in the "interfaces" bucket. The key for the interface is the interfaces' name.
+/// 
+fn add_interface_to_store(store: web::Data<kv::Store>, ifc: WgInterface) -> 
+Result<(), WgcError> {
+    let bucket = match store.bucket::<&str, Msgpack<WgInterface>>(Some("interfaces")) {
+        Ok(b) => b,
+        Err(e) => {
+            error!("failed to get interfaces bucket: {:?}", e);
+            return Err(WgcError {
+                message: format!("failed to get interfaces bucket: {:?}", e)
+            })
+        }
+    };
+    match bucket.set(ifc.name.as_str(), Msgpack(ifc)) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            error!("failed to push interface to store: {:?}", e);
+            Err(WgcError {
+                message: format!("failed to push interface to store: {:?}", e)
+            })
+        }
+    }
+}
+
+///
+/// Gets an interface from the KV store's "interfaces" bucket, using the interface's name as its key. 
+///
+fn get_interface_from_store_by_name(store: web::Data<kv::Store>, name: &str) ->
+    Result<WgInterface, WgcError> {
+        let bucket = match store.bucket::<&str, Msgpack<WgInterface>>(Some("interfaces")) {
+            Ok(b) => b,
+            Err(e) => {
+                error!("failed to get interfaces bucket: {:?}", e);
+                return Err(WgcError {
+                    message: format!("failed to get interfaces bucket: {:?}", e)
+                })
+            }
+        };
+        
+    let ifc_msg = match bucket.get(name) {
+        Ok(m) => m,
+        Err(e) => {
+            error!("failed to get interface from bucket: {:?}", e);
+            return Err(WgcError {
+                message: format!("failed to get interface from bucket: {:?}", e)
+            })
+        }
+    };
+
+    let msg = match ifc_msg {
+        Some(m) => m,
+        None => Err(WgcError{
+            message: String::from("failed to get message from MsgPack obj")
+        })
+    };
+}
+
 /// Create a WireGuard interface
 ///
 fn create_interface(
-    cfg: web::Data<Config>,
+    store: web::Data<kv::Store>,
     ifc_name: &str,
     address: &str,
     listen_port: &u32,
@@ -307,7 +383,7 @@ fn create_interface(
         });
     }
 
-    cfg.interfaces.push(wg_ifc);
+    add_interface_to_store(store, wg_ifc)?;
 
     info!("interface {} created", &ifc_name);
     Ok(())
@@ -449,7 +525,7 @@ async fn handle_gen_pub_key(info: web::Json<GenPubKeyRequest>) -> impl Responder
 async fn handle_create_interface(
     path: web::Path<String>,
     info: web::Json<GenInterfaceRequest>,
-    web_cfg: web::Data<Config>,
+    web_store: web::Data<kv::Store>,
 ) -> HttpResponse {
     let req = info.0;
     let private_key = req
@@ -458,7 +534,7 @@ async fn handle_create_interface(
     let ifc_name = path.to_string();
     let port = req.listen_port.unwrap_or(DFLT_WG_PORT);
 
-    match create_interface(web_cfg, &ifc_name, &req.address, &port, &private_key) {
+    match create_interface(web_store, &ifc_name, &req.address, &port, &private_key) {
         Ok(()) => {
             debug!("interface created");
             HttpResponse::Ok().reason("interface created").finish()
@@ -711,14 +787,15 @@ async fn main() -> std::io::Result<()> {
     let controller_port = matches.value_of("port").unwrap_or(DEF_CONTROLLER_PORT);
     let controller_addr = matches.value_of("address").unwrap_or(DEF_CONTROLLER_PORT);
     let config_file = matches.value_of("config").unwrap_or(DFLT_CONFIG_FILE);   
-    
-    let kv_config = kv::Config::new(config_file);
-    let store = match kv::Store::new(kv_config) {
-        Ok(st) => st,
-        Err(e) => panic!("failed to setup KV store: {:?}", e),
-    };
 
-    let web_store = web::Data::new(store);
+    let kv_config = kv::Config::new(config_file);
+    let kv_store = match kv::Store::new(kv_config) {
+        Ok(st) => st,
+        Err(e) => {
+            panic!("failed to get kv store: {:?}", e)
+        }
+    };
+    let web_store: web::Data<kv::Store> = web::Data::new(kv_store);
     
     debug!(
         "controller binding: {}:{}",
