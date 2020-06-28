@@ -258,7 +258,7 @@ Result<(), WgcError> {
             })
         }
     };
-    match bucket.set(ifc.name.as_str(), Msgpack(ifc)) {
+    match bucket.set(ifc.name.as_str(), Msgpack(ifc.clone())) {
         Ok(()) => Ok(()),
         Err(e) => {
             error!("failed to push interface to store: {:?}", e);
@@ -296,10 +296,13 @@ fn get_interface_from_store_by_name(store: web::Data<kv::Store>, name: &str) ->
 
     let msg = match ifc_msg {
         Some(m) => m,
-        None => Err(WgcError{
+        None => return Err(WgcError{
             message: String::from("failed to get message from MsgPack obj")
         })
     };
+
+    let ifc = msg.0;
+    Ok(ifc)
 }
 
 /// Create a WireGuard interface
@@ -319,9 +322,9 @@ fn create_interface(
 
     let mut wg_ifc = WgInterface::default();
     wg_ifc.config_file_path = ifc_cfg_wg_path.clone();
-    wg_ifc.name = ifc_name.to_string().clone();
-    wg_ifc.private_key = private_key.to_string().clone();
-    wg_ifc.address = address.to_string().clone();
+    wg_ifc.name = ifc_name.to_string();
+    wg_ifc.private_key = private_key.to_string();
+    wg_ifc.address = address.to_string();
     wg_ifc.listen_port = *listen_port;
 
     if Path::new(&ifc_cfg_wg_path).exists() {
