@@ -122,3 +122,8 @@ Provide a REST API and Web UI interface for wireguard operations
 ### Delete an interface
 
 `DELETE /interfaces/{interface}`
+
+
+https://swagger.io/specification/
+
+https://mrin9.github.io/RapiDoc/
