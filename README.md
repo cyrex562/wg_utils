@@ -127,3 +127,25 @@ Provide a REST API and Web UI interface for wireguard operations
 https://swagger.io/specification/
 
 https://mrin9.github.io/RapiDoc/
+
+
+## Processes
+
+### Provision a WG interface
+
+- [x] inputs: interface name, address/subnet, DNS server(s)(optional), MTU (optional), Pre/Post Up/Down commands (optional), routing (table/auto/off)
+- [x] generate private key
+- [x] generate interface config file
+- [x] save interface config to WG config dir
+- [x] use wg-quick to add interface
+
+### Provision a WG peer
+
+- [ ] inputs: remote endpoint IP, peer interface name, peer interface address/subnet, peer interface DNS server(s)(optional), MTU (optional), peer interface Pre/Post Up/Down commands (optional), peer interface routing table (optional)
+- [ ] generate private key
+- [ ] derive public key
+- [ ] generate peer interface config file
+- [ ] generate peer section for interface
+- [ ] add peer section to interface
+- [ ] dump peer interface config for saving
+
