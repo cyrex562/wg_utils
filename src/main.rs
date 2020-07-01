@@ -750,10 +750,13 @@ async fn p404() -> WebResult<fs::NamedFile> {
     Ok(fs::NamedFile::open("static/404.html")?.set_status_code(StatusCode::NOT_FOUND))
 }
 
-///
-/// 
-///
-async fn handle_
+
+async fn handle_provision_peer(
+    info: web::Json<ProvisionPeerRequest>,
+    path: web::Path<String>,
+)
+
+
 
 ///
 /// Program entry point
