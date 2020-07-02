@@ -1,5 +1,8 @@
-use std::fmt;
+use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
+use std::fmt;
+use tera::Tera;
+
 pub const DEF_CONTROLLER_PORT: &str = "8120";
 pub const DEF_CONTROLLER_ADDR: &str = "127.0.0.1";
 pub const DFLT_WG_PORT: u32 = 51820;
@@ -113,4 +116,37 @@ pub struct WgInterface {
 pub struct Config {
     pub local_endpoint: String,
     pub interfaces: Vec<WgInterface>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub struct ProvisionPeerRequest {
+    pub remote_allowed_ips: Vec<String>,
+    pub local_allowed_ips: Vec<String>,
+    pub address: String,
+    pub listen_port: Option<u32>,
+    pub table: Option<String>,
+    pub dns: Option<String>,
+    pub mtu: Option<String>,
+    pub remote_endpoint: Option<String>,
+    pub local_endpoint: String,
+    pub keepalive: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub struct ProvisionPeerResult {
+    pub interface_config: String,
+}
+
+lazy_static! {
+    pub static ref TEMPLATES: Tera = {
+        let mut tera = match Tera::new("templates/**/*") {
+            Ok(t) => t,
+            Err(e) => {
+                println!("failed to get/parse templates: {}", e);
+                ::std::process::exit(1);
+            }
+        };
+        tera.autoescape_on(vec!["html"]);
+        tera
+    };
 }
