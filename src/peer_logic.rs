@@ -1,6 +1,6 @@
 use crate::defines::{WgcError, TEMPLATES};
 
-use log::{debug, error};
+use log::error;
 use std::process::Command;
 use std::result::Result as std_result;
 use std::str;

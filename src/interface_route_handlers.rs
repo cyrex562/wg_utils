@@ -32,7 +32,7 @@ pub async fn handle_get_interfaces() -> HttpResponse {
             .reason("failed to get interfaces")
             .finish();
     }
-    // TODO: parse ouptut into proper JSON object
+    // TODO: parse output into proper JSON object
 
     let resp = GetInterfacesResponse {
         interfaces: output_str,

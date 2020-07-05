@@ -49,3 +49,18 @@ pub async fn handle_gen_pub_key(info: web::Json<GenPubKeyRequest>) -> impl Respo
 pub async fn p404() -> WebResult<fs::NamedFile> {
     Ok(fs::NamedFile::open("static/404.html")?.set_status_code(StatusCode::NOT_FOUND))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use actix_web::{test, web, App, dev::Service, Route};
+
+    #[actix_rt::test]
+    async fn test_handle_gen_priv_key() {
+        let mut app = test::init_service(App::new().route("/", web::get().to(handle_gen_priv_key))).await;
+        let req = test::TestRequest::get().uri("/").to_request();
+        let resp: GenPrivKeyResponse = test::read_response_json(&mut app, req).await;
+        println!("response: {:?}", resp);
+        assert_ne!(resp.private_key.len(), 0);
+    }
+}

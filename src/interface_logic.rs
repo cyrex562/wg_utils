@@ -157,6 +157,44 @@ pub fn add_interface_to_store(
     }
 }
 
+pub fn remove_interface(
+    ifc_name: &str,
+) -> Result<(), WgcError> {
+    let mut output = Command::new("sudo")
+        .arg("wg-quick")
+        .arg("down")
+        .arg(ifc_name)
+        .output()
+        .expect("failed to execute command");
+    let std_out_str = str::from_utf8(&output.stdout).unwrap();
+    let std_err_str = str::from_utf8(&output.stderr).unwrap();
+    if !output.status.success() {
+        error!(
+            "failed to down wg interface {}, stdout: \"{}\", stderr: \"{}\"",
+            ifc_name, std_out_str, std_err_str
+        );
+        return Err(WgcError {message: String::from("failed to down WG interface")}):
+    }
+
+    let ifc_wg_cfg_path = format!("/etc/wireguard/{}.conf", ifc_name);
+    output = Command::new("sudo")
+        .arg("rm")
+        .arg(ifc_wg_cfg_path)
+        .output()
+        .expect("failed to execute command");
+    let std_out_str = str::from_utf8(&output.stdout).unwrap();
+    let std_err_str = str::from_utf8(&output.stderr).unwrap();
+    if !output.status.success() {
+        error!(
+            "failed to delete interface {} config, stdout: \"{}\", stderr: \"{}\"",
+            ifc_name, std_out_str, std_err_str
+        );
+        return Err(WgcError {message: String::from("failed to delete interface")});
+    }
+
+    Ok(())
+}
+
 /// Create a WireGuard interface
 ///
 pub fn create_interface(
@@ -242,4 +280,23 @@ pub fn create_interface(
 
     info!("interface {} created", &ifc_name);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::gen_logic::gen_private_key;
+    use super::*;
+
+    #[test]
+    fn test_gen_interface_conf() {
+        let priv_key = gen_private_key().unwrap();
+        let addr = "192.0.0.1/24";
+        let port = 51820;
+        let result = gen_interface_conf(&priv_key, &addr, &port);
+        assert_eq!(result.is_ok(), true);
+        let ifc_config = result.unwrap();
+        println!("interface conf: {:?}", ifc_config);
+    }
+
+
 }

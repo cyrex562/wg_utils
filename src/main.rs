@@ -32,7 +32,7 @@ use utils::init_logger;
 async fn main() -> std::io::Result<()> {
     let matches = clap::App::new("wg_controller")
         .version("0.1")
-        .about("wrapper for wireguard configfuration management")
+        .about("wrapper for wireguard configuration management")
         .author("Josh M.")
         .arg(clap::Arg::with_name("port")
             .short("p")
