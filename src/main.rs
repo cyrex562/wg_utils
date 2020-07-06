@@ -80,10 +80,7 @@ async fn main() -> std::io::Result<()> {
     let _endpoint_addr = matches.value_of("endpoint").unwrap();
     let controller_bind = format!("{}:{}", controller_addr, controller_port);
 
-    match init_logger() {
-        Ok(_) => (),
-        Err(e) => panic!("failed to init logger: {}", e),
-    };
+    init_logger();
 
     HttpServer::new(move || {
         App::new()

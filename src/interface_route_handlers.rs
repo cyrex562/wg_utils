@@ -4,7 +4,7 @@ use crate::{
         DFLT_WG_PORT,
     },
     gen_logic::gen_private_key,
-    interface_logic::{create_interface, gen_interface_conf},
+    interface_logic::{create_interface, gen_interface_conf, remove_interface},
 };
 use actix_web::{web, HttpResponse, Responder};
 use log::{debug, error, info};
@@ -117,9 +117,9 @@ pub async fn handle_create_interface(
     let ifc_name = path.to_string();
     let port = req.listen_port.unwrap_or(DFLT_WG_PORT);
 
-    match create_interface(web_store, &ifc_name, &req.address, &port, &private_key) {
-        Ok(()) => {
-            debug!("interface created");
+    match create_interface(&ifc_name, &req.address, &port, &private_key) {
+        Ok(d) => {
+            debug!("interface created: {:?}", d);
             HttpResponse::Ok().reason("interface created").finish()
         }
         Err(e) => {
@@ -138,42 +138,35 @@ pub async fn handle_remove_interface(info: web::Path<String>) -> HttpResponse {
     let interface_name = info.to_string();
     info!("request  remove interface with name: {}", &interface_name);
 
-    let mut output = Command::new("sudo")
-        .arg("wg-quick")
-        .arg("down")
-        .arg(interface_name.clone())
-        .output()
-        .expect("failed to execute command");
-    let std_out_str = str::from_utf8(&output.stdout).unwrap();
-    let std_err_str = str::from_utf8(&output.stderr).unwrap();
-    if !output.status.success() {
-        error!(
-            "failed to down wg interface {}, stdout: \"{}\", stderr: \"{}\"",
-            interface_name, std_out_str, std_err_str
-        );
-        return HttpResponse::InternalServerError()
-            .reason("failed to down WG interface")
-            .finish();
+    match remove_interface(&interface_name) {
+        Ok(()) => {
+            debug!("interface removed");
+            HttpResponse::Ok().reason("interface removed").finish()
+        }
+        Err(e) => {
+            error!("failed to remove interface: {:?}", e);
+            HttpResponse::InternalServerError()
+                .reason("failed to remove interface")
+                .finish()
+        }
     }
+}
 
-    let ifc_wg_cfg_path = format!("/etc/wireguard/{}.conf", interface_name);
-    output = Command::new("sudo")
-        .arg("rm")
-        .arg(ifc_wg_cfg_path)
-        .output()
-        .expect("failed to execute command");
-    let std_out_str = str::from_utf8(&output.stdout).unwrap();
-    let std_err_str = str::from_utf8(&output.stderr).unwrap();
-    if !output.status.success() {
-        error!(
-            "failed to delete interface {} config, stdout: \"{}\", stderr: \"{}\"",
-            interface_name, std_out_str, std_err_str
-        );
-        return HttpResponse::InternalServerError()
-            .reason("failed to delete WG interface config")
-            .finish();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::init_logger;
+    use actix_web::{test, web, App};
+
+    #[actix_rt::test]
+    async fn test_handle_get_interfaces() {
+        init_logger();
+        // todo: create/add interfaces and verify they exist in the returned list
+        let mut app =
+            test::init_service(App::new().route("/", web::get().to(handle_get_interfaces))).await;
+        let req = test::TestRequest::get().uri("/").to_request();
+        let resp = test::call_service(&mut app, req).await;
+        debug!("response: {:?}", resp);
+        assert!(resp.status().is_success());
     }
-
-    info!("interface {} removed", interface_name);
-    HttpResponse::Ok().reason("interface removed").finish()
 }

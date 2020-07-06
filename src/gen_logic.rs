@@ -14,12 +14,14 @@ use std::str;
 /// ```
 ///
 pub fn gen_private_key() -> Result<String, WgcError> {
-    #[cfg(not(target_os = "windows"))]
+    debug!("generating private key");
+    #[cfg(target_family = "unix")]
     let mut cmd = Command::new("sudo").arg("wg");
-    #[cfg(target_os = "windows")]
+    #[cfg(target_family = "windows")]
     let mut cmd = Command::new("wg");
 
-    let output = cmd.arg("genkey")
+    let output = cmd
+        .arg("genkey")
         .output()
         .expect("failed to execute command");
     let mut stdout = str::from_utf8(output.stdout.as_slice()).unwrap();
@@ -27,6 +29,7 @@ pub fn gen_private_key() -> Result<String, WgcError> {
     let mut stderr = str::from_utf8(output.stderr.as_slice()).unwrap();
     stderr = stderr.trim();
     if output.status.success() {
+        debug!("successfully generated private key");
         Ok(stdout.to_string())
     } else {
         Err(WgcError {
@@ -42,24 +45,26 @@ pub fn gen_private_key() -> Result<String, WgcError> {
 
 ///
 /// Generate a Wireguard public key from a private key
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```
 /// let priv_key_result = gen_logic::gen_private_key();
 /// let priv_key = priv_key_result.unwrap();
 /// let pub_key_result = gen_logic::gen_public_key(private_key: &str)(&priv_key);
 /// assert!(pub_key_result.is_ok(), true);
 /// ```
-/// 
+///
 ///
 pub fn gen_public_key(private_key: &str) -> std_result<String, WgcError> {
-    #[cfg(not(target_os = "windows"))]
+    debug!("generating public key");
+    #[cfg(target_family = "unix")]
     let mut cmd = Command::new("sudo").arg("wg");
-    #[cfg(target_os="windows")]
+    #[cfg(target_family = "windows")]
     let mut cmd = Command::new("wg");
-    
-    let mut out = match cmd.arg("pubkey")
+
+    let mut out = match cmd
+        .arg("pubkey")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -104,6 +109,7 @@ pub fn gen_public_key(private_key: &str) -> std_result<String, WgcError> {
     stderr = stderr.trim();
 
     if output.status.success() {
+        debug!("successfully generated public key");
         return Ok(stdout.to_string());
     }
 
@@ -120,15 +126,18 @@ pub fn gen_public_key(private_key: &str) -> std_result<String, WgcError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::init_logger;
 
     #[test]
     fn test_gen_priv_key() {
+        init_logger();
         let priv_key_res = gen_private_key();
         assert_eq!(priv_key_res.is_ok(), true);
     }
 
     #[test]
     fn test_gen_pub_key() {
+        init_logger();
         let priv_key = gen_private_key().unwrap();
         let pub_key_res = gen_public_key(&priv_key);
         assert_eq!(pub_key_res.is_ok(), true);

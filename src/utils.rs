@@ -1,8 +1,8 @@
 ///
 /// Initialize the fern logger
 ///
-pub fn init_logger() -> Result<(), fern::InitError> {
-    fern::Dispatch::new()
+pub fn init_logger() {
+    match fern::Dispatch::new()
         .chain(
             fern::Dispatch::new()
                 .level(log::LevelFilter::Debug)
@@ -17,7 +17,11 @@ pub fn init_logger() -> Result<(), fern::InitError> {
                 })
                 .chain(std::io::stdout()),
         )
-        .apply()?;
-
-    Ok(())
+        .apply()
+    {
+        Ok(()) => println!("logger created"),
+        Err(e) => {
+            println!("failed to create logger: {:?}", e);
+        }
+    };
 }
