@@ -464,7 +464,41 @@ pub fn get_interfaces() -> Result<String, WgcError> {
 
 #[cfg(target_family = "unix")]
 pub fn get_interface(ifc_name: &str) -> Result<String, WgcError> {
+    let output = Command::new("sudo")
+        .arg("wg")
+        .arg("show")
+        .arg(ifc_name)
+        .output()
+        .expect("failed to execute process");
+    let output_str = str::from_utf8(&output.stdout).unwrap();
+    let err_str = str::from_utf8(&output.stderr).unwrap();
+    if !output.status.success() {
+        error!(
+            "failed to get interface information: stdout: \"{}\", stderr: \"{}\"",
+            &output_str, &err_str
+        );
+        return Err(WgcError { message: format!("failed to get information for interface: {}", ifc_name)});
+    }
+    return Ok(output_str.to_string())
+} 
 
+#[cfg(target_family = "windows")]
+pub fn get_interface(ifc_name: &str) -> Result<String, WgcError> {
+    let output = Command::new("wg")
+        .arg("show")
+        .arg(ifc_name)
+        .output()
+        .expect("failed to execute process");
+    let output_str = str::from_utf8(&output.stdout).unwrap();
+    let err_str = str::from_utf8(&output.stderr).unwrap();
+    if !output.status.success() {
+        error!(
+            "failed to get interface information: stdout: \"{}\", stderr: \"{}\"",
+            &output_str, &err_str
+        );
+        return Err(WgcError { message: format!("failed to get information for interface: {}", ifc_name)});
+    }
+    Ok(output_str.to_string())
 }
 
 #[cfg(test)]

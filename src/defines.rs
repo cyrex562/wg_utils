@@ -1,3 +1,4 @@
+use std::error::Error;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -9,6 +10,23 @@ pub const DFLT_WG_PORT: u32 = 51820;
 pub const DFLT_KEEPALIVE: u32 = 25;
 pub const DFLT_CONFIG_FILE: &str = "./config.toml";
 
+// #[derive(Debug)]
+// struct SuperError {
+//     side: SuperErrorSideKick,
+// }
+
+// impl fmt::Display for SuperError {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         write!(f, "SuperError is here!")
+//     }
+// }
+
+// impl Error for SuperError {
+//     fn source(&self) -> Option<&(dyn Error + 'static)> {
+//         Some(&self.side)
+//     }
+// }
+
 ///
 /// Custom error thrown by functions
 ///
@@ -16,6 +34,8 @@ pub const DFLT_CONFIG_FILE: &str = "./config.toml";
 pub struct WgcError {
     pub message: String,
 }
+
+impl Error for WgcError {}
 
 impl fmt::Display for WgcError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

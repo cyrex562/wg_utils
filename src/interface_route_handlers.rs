@@ -4,40 +4,30 @@ use crate::{
         DFLT_WG_PORT,
     },
     gen_logic::gen_private_key,
-    interface_logic::{create_interface, gen_interface_conf, remove_interface},
+    interface_logic::{create_interface, gen_interface_conf, remove_interface, get_interfaces, get_interface},
 };
 use actix_web::{web, HttpResponse, Responder};
 use log::{debug, error, info};
-use std::process::Command;
-use std::str;
 
 ///
 /// Gets a list of Wireguard interfaces present on the system
 ///
 pub async fn handle_get_interfaces() -> HttpResponse {
-    let output = Command::new("sudo")
-        .arg("wg")
-        .arg("show")
-        .arg("interfaces")
-        .output()
-        .expect("failed to execute command");
-    let output_str = String::from_utf8(output.stdout).unwrap();
-    let err_str = String::from_utf8(output.stderr).unwrap();
-    if !output.status.success() {
-        error!(
-            "failed to get interfaces: stdout: {}, stderr: {}",
-            &output_str, &err_str
-        );
-        return HttpResponse::InternalServerError()
-            .reason("failed to get interfaces")
-            .finish();
-    }
     // TODO: parse output into proper JSON object
-
-    let resp = GetInterfacesResponse {
-        interfaces: output_str,
-    };
-    HttpResponse::Ok().json(resp)
+    match get_interfaces() {
+        Ok(ifcs) => {
+            let resp = GetInterfacesResponse {
+                interfaces: ifcs,
+            };
+            HttpResponse::Ok().json(resp)
+        },
+        Err(e) => {
+            error!("failed to get interfaces: {:?}", e);
+            HttpResponse::InternalServerError()
+                .reason("failed to get interfaces")
+                .finish()
+        }
+    }
 }
 
 ///
@@ -50,28 +40,19 @@ pub async fn handle_get_interface(info: web::Path<String>) -> HttpResponse {
         "request interface info for interface with name: {}",
         interface_name.clone()
     );
-    let output = Command::new("sudo")
-        .arg("wg")
-        .arg("show")
-        .arg(interface_name.clone())
-        .output()
-        .expect("failed to execute process");
-    let output_str = str::from_utf8(&output.stdout).unwrap();
-    let err_str = str::from_utf8(&output.stderr).unwrap();
-    if !output.status.success() {
-        error!(
-            "failed to get interface information: stdout: \"{}\", stderr: \"{}\"",
-            &output_str, &err_str
-        );
-        return HttpResponse::BadRequest()
-            .reason("failed to get interface info by name")
-            .finish();
+
+    match get_interface(&interface_name) {
+        Ok(info) => {
+            debug!("interface info: \"{}\"", &info);
+            let resp = GetInterfaceResponse {
+                interface: info,
+            };
+            HttpResponse::Ok().json(resp)
+        },
+        Err(e) => {
+            HttpResponse::InternalServerError().reason("failed to get interface").finish()
+        }
     }
-    debug!("interface info: \"{}\"", &output_str);
-    let resp = GetInterfaceResponse {
-        interface: output_str.to_string(),
-    };
-    HttpResponse::Ok().json(resp)
 }
 
 ///
@@ -168,5 +149,48 @@ mod tests {
         let resp = test::call_service(&mut app, req).await;
         debug!("response: {:?}", resp);
         assert!(resp.status().is_success());
+    }
+
+    #[actix_rt::test]
+    async fn test_handle_get_interface() {
+        // todo: create/add interface to check result properly
+        let pk_res = gen_private_key();
+        assert!(pk_res.is_ok());
+        let private_key = pk_res.unwrap();
+
+        let ifc_name = "test_ifc_1";
+        let address = "192.0.0.1/24";
+        let listen_port = 52810;
+
+        let ci_res = create_interface(&ifc_name, &address, &listen_port, &private_key);
+        assert!(ci_res.is_ok());
+        let ifc = ci_res.unwrap();
+        debug!("create interface: {:?}", ifc);
+
+        let mut app =
+            test::init_service(App::new().route(format!("/{}", &ifc_name), web::get().to(handle_get_interface))).await;
+        let req = test::TestRequest::get().uri(format!("/{}", &ifc_name)).to_request();
+        let resp = test::call_service(&mut app, req).await;
+        debug!("response: {:?}", resp);
+        assert!(resp.status().is_success());
+
+        let rem_res = remove_interface(&ifc_name);
+        assert!(rem_res.is_ok());
+    }
+
+    #[actix_rt::test]
+    async fn test_gen_ifc_cfg() {
+        let pk_res = gen_private_key();
+        assert!(pk_res.is_ok());
+        let private_key = pk_res.unwrap();
+
+        let ifc_name = "test_ifc_1";
+        let address = "192.0.0.1/24";
+        let listen_port = 52810;
+
+        let ifc_cfg_res = gen_interface_conf(&private_key, &address, &listen_port);
+        assert!(ifc_cfg_res.is_ok());
+        let ifc_cfg = ifc_cfg_res.unwrap();
+        debug!("interface config: {:?}", ifc_cfg);
     }
 }
