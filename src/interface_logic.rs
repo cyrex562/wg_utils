@@ -3,7 +3,7 @@ use crate::defines::{WgInterface, WgcError, TEMPLATES};
 use actix_web::web;
 // use kv::Msgpack;
 
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use std::fs::File;
 
 use std::io::Write;
@@ -40,7 +40,7 @@ pub fn gen_interface_conf(
     ctx.insert("set_post_up", &false);
     ctx.insert("set_post_down", &false);
 
-    match TEMPLATES.render("interface.conf.template", &ctx) {
+    match TEMPLATES.render("interface.conf.jn2", &ctx) {
         Ok(s) => Ok(s),
         Err(e) => {
             println!("Error: {}", e);
@@ -157,7 +157,9 @@ pub fn get_ifc_pub_key(ifc_name: &str) -> std_result<String, WgcError> {
 //     }
 // }
 
-pub fn unix_bring_ifc_dn(ifc_name: &str) -> Result<(), WgcError> {
+#[cfg(target_family = "unix")]
+pub fn bring_dn_ifc(ifc_name: &str) -> Result<(), WgcError> {
+    debug!("bringing interface {} down", ifc_name);
     let output = Command::new("sudo")
         .arg("wg-quick")
         .arg("down")
@@ -167,18 +169,25 @@ pub fn unix_bring_ifc_dn(ifc_name: &str) -> Result<(), WgcError> {
     let std_out_str = str::from_utf8(&output.stdout).unwrap();
     let std_err_str = str::from_utf8(&output.stderr).unwrap();
     if !output.status.success() {
-        error!(
-            "failed to down wg interface {}, stdout: \"{}\", stderr: \"{}\"",
-            ifc_name, std_out_str, std_err_str
-        );
-        return Err(WgcError {
-            message: String::from("failed to down WG interface"),
-        });
+        if std_err_str.find("does not exist").is_some() {
+            warn!("interface: {} does not exist", ifc_name);
+            return Ok(());
+        } else {
+            error!(
+                "failed to down wg interface {}, stdout: \"{}\", stderr: \"{}\"",
+                ifc_name, std_out_str, std_err_str
+            );
+            return Err(WgcError {
+                message: String::from("failed to down WG interface"),
+            });
+        }
     }
+    debug!("brought down interface {}", ifc_name);
     Ok(())
 }
 
-pub fn win_bring_ifc_dn(ifc_name: &str) -> Result<(), WgcError> {
+#[cfg(target_family = "windows")]
+pub fn bring_dn_ifc(ifc_name: &str) -> Result<(), WgcError> {
     debug!("bringing interface down");
     let output = Command::new("C:\\Program Files\\Wireguard\\wireguard.exe")
         .arg("/uninstalltunnelservice")
@@ -201,16 +210,22 @@ pub fn win_bring_ifc_dn(ifc_name: &str) -> Result<(), WgcError> {
     Ok(())
 }
 
-pub fn unix_del_ifc_cfg_file(ifc_name: &str) -> Result<(), WgcError> {
+#[cfg(target_family = "unix")]
+pub fn del_ifc_cfg_file(ifc_name: &str) -> Result<(), WgcError> {
     let ifc_wg_cfg_path = format!("/etc/wireguard/{}.conf", ifc_name);
+    debug!("deleting interface config file {}", &ifc_wg_cfg_path);
     let output = Command::new("sudo")
         .arg("rm")
-        .arg(ifc_wg_cfg_path)
+        .arg(&ifc_wg_cfg_path)
         .output()
         .expect("failed to execute command");
     let std_out_str = str::from_utf8(&output.stdout).unwrap();
     let std_err_str = str::from_utf8(&output.stderr).unwrap();
     if !output.status.success() {
+        if std_err_str.find("No such file").is_some() {
+            warn!("interface config file {} does not exist", &ifc_wg_cfg_path);
+            return Ok(());
+        }
         error!(
             "failed to delete interface {} config, stdout: \"{}\", stderr: \"{}\"",
             ifc_name, std_out_str, std_err_str
@@ -219,10 +234,12 @@ pub fn unix_del_ifc_cfg_file(ifc_name: &str) -> Result<(), WgcError> {
             message: String::from("failed to delete interface"),
         });
     }
+    debug!("interface config file deleted");
     Ok(())
 }
 
-pub fn win_del_ifc_cfg_file(ifc_name: &str) -> Result<(), WgcError> {
+#[cfg(target_family = "windows")]
+pub fn del_ifc_cfg_file(ifc_name: &str) -> Result<(), WgcError> {
     let ifc_cfg_file = format!("{}", ifc_name);
     let ifc_cfg_wg_path = format!("C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\WireGuard\\Configurations\\{}", ifc_cfg_file);
 
@@ -249,18 +266,12 @@ pub fn win_del_ifc_cfg_file(ifc_name: &str) -> Result<(), WgcError> {
 }
 
 pub fn remove_interface(ifc_name: &str) -> Result<(), WgcError> {
-    #[cfg(target_family = "unix")]
-    unix_bring_ifc_dn(ifc_name)?;
+    debug!("removing interface: {}", ifc_name);
+    bring_dn_ifc(ifc_name)?;
 
-    #[cfg(target_family = "windows")]
-    win_bring_ifc_dn(ifc_name)?;
+    del_ifc_cfg_file(ifc_name)?;
 
-    #[cfg(target_family = "unix")]
-    unix_del_ifc_cfg_file(ifc_name)?;
-
-    #[cfg(target_family = "windows")]
-    win_del_ifc_cfg_file(ifc_name)?;
-
+    debug!("interface removed");
     Ok(())
 }
 
@@ -477,10 +488,12 @@ pub fn get_interface(ifc_name: &str) -> Result<String, WgcError> {
             "failed to get interface information: stdout: \"{}\", stderr: \"{}\"",
             &output_str, &err_str
         );
-        return Err(WgcError { message: format!("failed to get information for interface: {}", ifc_name)});
+        return Err(WgcError {
+            message: format!("failed to get information for interface: {}", ifc_name),
+        });
     }
-    return Ok(output_str.to_string())
-} 
+    return Ok(output_str.to_string());
+}
 
 #[cfg(target_family = "windows")]
 pub fn get_interface(ifc_name: &str) -> Result<String, WgcError> {
@@ -496,7 +509,9 @@ pub fn get_interface(ifc_name: &str) -> Result<String, WgcError> {
             "failed to get interface information: stdout: \"{}\", stderr: \"{}\"",
             &output_str, &err_str
         );
-        return Err(WgcError { message: format!("failed to get information for interface: {}", ifc_name)});
+        return Err(WgcError {
+            message: format!("failed to get information for interface: {}", ifc_name),
+        });
     }
     Ok(output_str.to_string())
 }
@@ -537,8 +552,50 @@ mod tests {
     #[test]
     fn test_get_interfaces() {
         init_logger();
+
+        let ifc_name = "wg_test_ifc_1";
+        let addr = "192.0.0.1/24";
+        let port = 51820;
+        let priv_key = gen_private_key().unwrap();
+
+        let rem_res = remove_interface(&ifc_name);
+        assert_eq!(rem_res.is_ok(), true);
+
+        let result = create_interface(&ifc_name, &addr, &port, &priv_key);
+        assert_eq!(result.is_ok(), true);
+        let ifc_config = result.unwrap();
+        info!("Interface config: {:?}", ifc_config);
+
         let result = get_interfaces();
         assert!(result.is_ok());
         debug!("get interfaces result: {:?}", result);
+
+        let rem_res = remove_interface(&ifc_name);
+        assert_eq!(rem_res.is_ok(), true);
+    }
+
+    #[test]
+    fn test_get_interface() {
+        init_logger();
+
+        let ifc_name = "wg_test_ifc_1";
+        let addr = "192.0.0.1/24";
+        let port = 51820;
+        let priv_key = gen_private_key().unwrap();
+
+        let rem_res = remove_interface(&ifc_name);
+        assert_eq!(rem_res.is_ok(), true);
+
+        let result = create_interface(&ifc_name, &addr, &port, &priv_key);
+        assert_eq!(result.is_ok(), true);
+        let ifc_config = result.unwrap();
+        info!("Interface config: {:?}", ifc_config);
+
+        let gi_res = get_interface(&ifc_name);
+        assert!(gi_res.is_ok());
+        debug!("get interface result {:?}", gi_res.unwrap());
+
+        let rem_res = remove_interface(&ifc_name);
+        assert_eq!(rem_res.is_ok(), true);
     }
 }

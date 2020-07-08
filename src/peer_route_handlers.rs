@@ -1,3 +1,4 @@
+use crate::peer_logic::remove_peer;
 use crate::{
     defines::{
         GenPeerRequest, GenPeerResponse, ProvisionPeerRequest, ProvisionPeerResult, DFLT_KEEPALIVE,
@@ -10,8 +11,6 @@ use crate::{
 
 use actix_web::{web, HttpResponse};
 use log::error;
-use std::process::Command;
-use std::str;
 
 ///
 /// Route handler to add peer to an interface
@@ -49,44 +48,16 @@ pub async fn handle_remove_peer(
 ) -> HttpResponse {
     let req = info.0;
     let ifc_name = path.to_string();
-    let output = Command::new("sudo")
-        .arg("wg")
-        .arg("set")
-        .arg(&ifc_name)
-        .arg("peer")
-        .arg(&req.public_key)
-        .arg("remove")
-        .output()
-        .expect("failed to execute command");
-    if !output.status.success() {
-        error!(
-            "failed to remove peer from interface: stdout: {}, stderr: {}",
-            str::from_utf8(output.stdout.as_slice()).unwrap(),
-            str::from_utf8(output.stderr.as_slice()).unwrap()
-        );
-        return HttpResponse::InternalServerError()
-            .reason("failed to remove peer from interface")
-            .finish();
-    }
 
-    let output = Command::new("sudo")
-        .arg("wg-quick")
-        .arg("save")
-        .arg(&ifc_name)
-        .output()
-        .expect("failed execute command");
-    if !output.status.success() {
-        error!(
-            "failed to save interface state to config: stdout: {}, stderr: {}",
-            str::from_utf8(output.stdout.as_slice()).unwrap(),
-            str::from_utf8(output.stderr.as_slice()).unwrap()
-        );
-        return HttpResponse::InternalServerError()
-            .reason("failed to save interface config")
-            .finish();
+    match remove_peer(&ifc_name, &req.public_key) {
+        Ok(()) => HttpResponse::Ok().reason("peer removed").finish(),
+        Err(e) => {
+            error!("failed to remove peer: {:?}", e);
+            HttpResponse::InternalServerError()
+                .reason("failed to remove peer")
+                .finish()
+        }
     }
-
-    HttpResponse::Ok().reason("peer added to config").finish()
 }
 
 pub async fn handle_provision_peer(
@@ -230,5 +201,135 @@ pub async fn handle_gen_peer(info: web::Json<GenPeerRequest>) -> HttpResponse {
                 .reason("failed to generate peer conf")
                 .finish()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::init_logger;
+    use actix_web::{test, web, App};
+    use crate::interface_logic::{gen_interface_conf, remove_interface, create_interface};
+    use crate::peer_logic::{add_peer, remove_peer, gen_peer_conf};
+    use log::debug;
+
+    #[actix_rt::test]
+    async fn test_handle_add_rm_peer() {
+        init_logger();
+
+        let pk_res: Result<String, crate::defines::WgcError> = gen_private_key();
+        assert!(pk_res.is_ok());
+        let private_key = pk_res.unwrap();
+
+        let ifc_name = "test_ifc_1";
+        let address = "192.0.0.1/24";
+        let listen_port = 52810;
+
+        let ri_res = remove_interface(&ifc_name);
+        assert!(ri_res.is_ok());
+
+        let ci_res = create_interface(&ifc_name, &address, &listen_port, &private_key);
+        assert!(ci_res.is_ok());
+        let ifc = ci_res.unwrap();
+        debug!("create interface: {:?}", ifc);
+
+        let path = format!("/{}", ifc_name);
+
+        let pk_res_2 = gen_private_key();
+        assert!(pk_res_2.is_ok());
+        let peer_priv_key = pk_res_2.unwrap();
+
+        let pub_key_res = gen_public_key(&peer_priv_key);
+        assert!(pub_key_res.is_ok());
+        let peer_pub_key = pub_key_res.unwrap();
+
+        let allowed_ip = "192.0.0.0/24";
+        let allowed_ips = vec![allowed_ip.to_string()];
+
+        let mut app = test::init_service(
+            App::new()
+            .route("/{interface}", web::post().to(handle_add_peer))
+            .route("/{interface}", web::delete().to(handle_remove_peer))).await;
+        let gen_peer_req = GenPeerRequest {
+            endpoint: None,
+            public_key: peer_pub_key.clone(),
+            allowed_ips: allowed_ips,
+            persistent_keepalive: None,
+        };
+        let req = test::TestRequest::post().uri(&path).set_json(&gen_peer_req).to_request();
+        let resp = test::call_service(&mut app, req).await;
+        debug!("response: {:?}", resp);
+        assert!(resp.status().is_success());
+
+        let rem_req = test::TestRequest::delete().uri(&path).set_json(&gen_peer_req).to_request();
+        let rem_resp = test::call_service(&mut app, rem_req).await;
+        debug!("response: {:?}", rem_resp);
+        assert!(rem_resp.status().is_success());
+
+        let ri_res = remove_interface(&ifc_name);
+        assert!(ri_res.is_ok());
+    }
+
+    #[actix_rt::test]
+    async fn test_handle_provision_peer() {
+        init_logger();
+
+        let pk_res: Result<String, crate::defines::WgcError> = gen_private_key();
+        assert!(pk_res.is_ok());
+        let private_key = pk_res.unwrap();
+
+        let ifc_name = "test_ifc_1";
+        let address = "192.0.0.1/24";
+        let port = 52810;
+
+        let ri_res = remove_interface(&ifc_name);
+        assert!(ri_res.is_ok());
+
+        let ci_res = create_interface(&ifc_name, &address, &port, &private_key);
+        assert!(ci_res.is_ok());
+        let ifc = ci_res.unwrap();
+        debug!("create interface: {:?}", ifc);
+
+        let remote_allowed_ip = "192.0.0.0/24";
+        let local_allowed_ip = "192.0.0.0/24";
+
+        let remote_allowed_ips = vec![remote_allowed_ip.to_string()];
+        let local_allowed_ips = vec![local_allowed_ip.to_string()];
+        let address = String::from("192.0.0.2/24");
+        let table = None;
+        let dns = None;
+        let mtu = None;
+        let keepalive = None;
+        let remote_endpoint = None;
+        let listen_port = Some(port);
+        let local_endpoint = String::from("1.2.3.4:51820");
+
+
+        let prov_peer_req_obj = ProvisionPeerRequest{
+            remote_allowed_ips,
+            local_allowed_ips,
+            address,
+            listen_port,
+            table,
+            dns,
+            mtu,
+            remote_endpoint,
+            local_endpoint,
+            keepalive,
+        };
+
+        let path = format!("/{}", ifc_name);
+
+        let mut app = test::init_service(
+            App::new()
+            .route("/{interface}", web::post().to(handle_provision_peer))
+        ).await;
+        let prov_peer_req = test::TestRequest::post().uri(&path).set_json(&prov_peer_req_obj).to_request();
+        let prov_peer_resp = test::call_service(&mut app, prov_peer_req).await;
+        debug!("response: {:?}", prov_peer_resp);
+        assert!(prov_peer_resp.status().is_success());
+
+        let ri_res = remove_interface(&ifc_name);
+        assert!(ri_res.is_ok());
     }
 }

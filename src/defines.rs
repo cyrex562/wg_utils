@@ -1,6 +1,6 @@
-use std::error::Error;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
+use std::error::Error;
 use std::fmt;
 use tera::Tera;
 

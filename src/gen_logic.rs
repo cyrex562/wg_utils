@@ -1,15 +1,15 @@
 use crate::defines::WgcError;
 use log::debug;
 use std::io::Write;
+use std::process::Child;
 use std::process::Command;
 use std::process::Stdio;
 use std::result::Result as std_result;
-use std::str;
-
+use std::{error::Error, str};
 
 ///
-/// 
-/// 
+///
+///
 pub fn unix_gen_private_key() -> Result<String, WgcError> {
     let mut output = Command::new("sudo")
         .arg("wg")
@@ -30,14 +30,14 @@ pub fn unix_gen_private_key() -> Result<String, WgcError> {
                 output.status.code().unwrap(),
                 stdout,
                 stderr,
-            )
+            ),
         })
     }
 }
 
 ///
-/// 
-/// 
+///
+///
 pub fn win_gen_private_key() -> Result<String, WgcError> {
     let mut output = Command::new("wg")
         .arg("genkey")
@@ -57,7 +57,7 @@ pub fn win_gen_private_key() -> Result<String, WgcError> {
                 output.status.code().unwrap(),
                 stdout,
                 stderr,
-            )
+            ),
         })
     }
 }
@@ -79,15 +79,23 @@ pub fn gen_private_key() -> Result<String, WgcError> {
 }
 
 #[cfg(target_family = "unix")]
-pub fn gen_pub_key_cmd() -> Result {
-    return Command::new("sudo").arg("wg").arg("pubkey").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn();
+pub fn gen_pub_key_cmd() -> Result<Child, std::io::Error> {
+    return Command::new("sudo")
+        .arg("wg")
+        .arg("pubkey")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn();
 }
 
 #[cfg(target_family = "windows")]
-pub fn gen_pub_key_cmd() -> Result {
-    return Command::new("wg").arg("pubkey").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn();
+pub fn gen_pub_key_cmd() -> Result<Child, std::io::Error> {
+    return Command::new("wg")
+        .arg("pubkey")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn();
 }
-
 
 ///
 /// Generate a Wireguard public key from a private key
@@ -104,13 +112,7 @@ pub fn gen_pub_key_cmd() -> Result {
 ///
 pub fn gen_public_key(private_key: &str) -> std_result<String, WgcError> {
     debug!("generating public key");
-    let mut cmd = gen_pub_key_cmd()?;
-    let mut out = match cmd
-        .arg("pubkey")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-    {
+    let mut out = match gen_pub_key_cmd() {
         Ok(p) => p,
         Err(e) => {
             return Err(WgcError {
