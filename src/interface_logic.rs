@@ -406,11 +406,11 @@ pub fn create_interface(
     write_ifc_config_to_file(&ifc_cfg_tmp_path_str, &ifc_conf_data)?;
 
     #[cfg(target_family = "unix")]
-    unix_copy_interface_file(ifc_cfg_tmp_path, ifc_cfg_wg_path)?;
+    unix_copy_interface_file(&ifc_cfg_tmp_path_str, &ifc_cfg_wg_path)?;
 
     // f.map_err(|e| MyCustomError::FileOpenError(e))?;
     #[cfg(target_family = "unix")]
-    unix_bring_ifc_up(ifc_cfg_wg_path)?;
+    unix_bring_ifc_up(&ifc_cfg_wg_path)?;
 
     #[cfg(target_family = "windows")]
     win_bring_ifc_up(&ifc_cfg_tmp_path_str)?;

@@ -6,21 +6,13 @@ use std::process::Stdio;
 use std::result::Result as std_result;
 use std::str;
 
-///
-/// Generate a Wireguard Private Key
-/// ```
-/// let result = gen_logic::gen_private_key();
-/// assert!(result.is_ok(), true);
-/// ```
-///
-pub fn gen_private_key() -> Result<String, WgcError> {
-    debug!("generating private key");
-    #[cfg(target_family = "unix")]
-    let mut cmd = Command::new("sudo").arg("wg");
-    #[cfg(target_family = "windows")]
-    let mut cmd = Command::new("wg");
 
-    let output = cmd
+///
+/// 
+/// 
+pub fn unix_gen_private_key() -> Result<String, WgcError> {
+    let mut output = Command::new("sudo")
+        .arg("wg")
         .arg("genkey")
         .output()
         .expect("failed to execute command");
@@ -34,14 +26,68 @@ pub fn gen_private_key() -> Result<String, WgcError> {
     } else {
         Err(WgcError {
             message: format!(
-                "wg genkey failed: code: {} stdout: {} stderr: {}",
+                "wg genkey failed: code: {}, stdout: {}, stderr: {}",
                 output.status.code().unwrap(),
                 stdout,
                 stderr,
-            ),
+            )
         })
     }
 }
+
+///
+/// 
+/// 
+pub fn win_gen_private_key() -> Result<String, WgcError> {
+    let mut output = Command::new("wg")
+        .arg("genkey")
+        .output()
+        .expect("failed to execute command");
+    let mut stdout = str::from_utf8(output.stdout.as_slice()).unwrap();
+    stdout = stdout.trim();
+    let mut stderr = str::from_utf8(output.stderr.as_slice()).unwrap();
+    stderr = stderr.trim();
+    if output.status.success() {
+        debug!("successfully generated private key");
+        Ok(stdout.to_string())
+    } else {
+        Err(WgcError {
+            message: format!(
+                "wg genkey failed: code: {}, stdout: {}, stderr: {}",
+                output.status.code().unwrap(),
+                stdout,
+                stderr,
+            )
+        })
+    }
+}
+
+///
+/// Generate a Wireguard Private Key
+/// ```
+/// let result = gen_logic::gen_private_key();
+/// assert!(result.is_ok(), true);
+/// ```
+///
+pub fn gen_private_key() -> Result<String, WgcError> {
+    debug!("generating private key");
+    #[cfg(target_family = "unix")]
+    let priv_key = unix_gen_private_key()?;
+    #[cfg(target_family = "windows")]
+    let priv_key = win_gen_private_key()?;
+    Ok(priv_key)
+}
+
+#[cfg(target_family = "unix")]
+pub fn gen_pub_key_cmd() -> Result {
+    return Command::new("sudo").arg("wg").arg("pubkey").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn();
+}
+
+#[cfg(target_family = "windows")]
+pub fn gen_pub_key_cmd() -> Result {
+    return Command::new("wg").arg("pubkey").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn();
+}
+
 
 ///
 /// Generate a Wireguard public key from a private key
@@ -58,11 +104,7 @@ pub fn gen_private_key() -> Result<String, WgcError> {
 ///
 pub fn gen_public_key(private_key: &str) -> std_result<String, WgcError> {
     debug!("generating public key");
-    #[cfg(target_family = "unix")]
-    let mut cmd = Command::new("sudo").arg("wg");
-    #[cfg(target_family = "windows")]
-    let mut cmd = Command::new("wg");
-
+    let mut cmd = gen_pub_key_cmd()?;
     let mut out = match cmd
         .arg("pubkey")
         .stdin(Stdio::piped())
