@@ -5,13 +5,14 @@ use std::process::Child;
 use std::process::Command;
 use std::process::Stdio;
 use std::result::Result as std_result;
-use std::{error::Error, str};
+use std::{str};
 
 ///
 ///
 ///
-pub fn unix_gen_private_key() -> Result<String, WgcError> {
-    let mut output = Command::new("sudo")
+#[cfg(target_family = "unix")]
+pub fn gen_private_key() -> Result<String, WgcError> {
+    let output = Command::new("sudo")
         .arg("wg")
         .arg("genkey")
         .output()
@@ -38,7 +39,8 @@ pub fn unix_gen_private_key() -> Result<String, WgcError> {
 ///
 ///
 ///
-pub fn win_gen_private_key() -> Result<String, WgcError> {
+#[cfg(target_family = "windows")]
+pub fn gen_private_key() -> Result<String, WgcError> {
     let mut output = Command::new("wg")
         .arg("genkey")
         .output()
@@ -60,22 +62,6 @@ pub fn win_gen_private_key() -> Result<String, WgcError> {
             ),
         })
     }
-}
-
-///
-/// Generate a Wireguard Private Key
-/// ```
-/// let result = gen_logic::gen_private_key();
-/// assert!(result.is_ok(), true);
-/// ```
-///
-pub fn gen_private_key() -> Result<String, WgcError> {
-    debug!("generating private key");
-    #[cfg(target_family = "unix")]
-    let priv_key = unix_gen_private_key()?;
-    #[cfg(target_family = "windows")]
-    let priv_key = win_gen_private_key()?;
-    Ok(priv_key)
 }
 
 #[cfg(target_family = "unix")]

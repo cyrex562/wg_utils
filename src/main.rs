@@ -21,9 +21,10 @@ use interface_route_handlers::{
     handle_create_interface, handle_gen_ifc_cfg, handle_get_interface, handle_get_interfaces,
     handle_remove_interface,
 };
-use peer_route_handlers::{handle_add_peer, handle_gen_peer, handle_remove_peer};
+use peer_route_handlers::{handle_add_peer, handle_gen_peer, handle_remove_peer, handle_provision_peer};
 use std::io;
 use utils::init_logger;
+use defines::DB_FILE;
 
 ///
 /// Program entry point
@@ -34,38 +35,24 @@ async fn main() -> std::io::Result<()> {
         .version("0.1")
         .about("wrapper for wireguard configuration management")
         .author("Josh M.")
-        .arg(clap::Arg::with_name("port")
-            .short("p")
-            .long("port")
-            .value_name("PORT")
-            .help("controller listen port")
-            .takes_value(true))
-        .arg(clap::Arg::with_name("address")
-            .short("a")
-            .long("address")
-            .value_name("ADDRESS")
-            .help("controller listen address")
-            .takes_value(true))
-        .arg(clap::Arg::with_name("endpoint")
-            .short("e")
-            .long("endpoint")
-            .value_name("ENDPOINT_ADDRESS")
-            .help("enpoint IP address for client configs, generally public IP or IP of the internet-facing interface")
-            .required(true)
-            .takes_value(true))
         .arg(clap::Arg::with_name("config")
             .short("c")
             .long("config")
             .value_name("CONFIG_FILE")
+            .required(true)
             .help("path to a configuration file to use")
             .takes_value(true))
         .get_matches();
 
-    let controller_port = matches.value_of("port").unwrap_or(DEF_CONTROLLER_PORT);
-    let controller_addr = matches.value_of("address").unwrap_or(DEF_CONTROLLER_PORT);
+    // let controller_port = matches.value_of("port").unwrap_or(DEF_CONTROLLER_PORT);
+    // let controller_addr = matches.value_of("address").unwrap_or(DEF_CONTROLLER_PORT);
     let config_file = matches.value_of("config").unwrap_or(DFLT_CONFIG_FILE);
+    // todo: check if path exists
+    // todo: open file and read it to string
+    // todo: parse toml into object from string
+    // todo: store in app data
 
-    let kv_config = kv::Config::new(config_file);
+    let kv_config = kv::Config::new(DB_FILE);
     let kv_store = match kv::Store::new(kv_config) {
         Ok(st) => st,
         Err(e) => panic!("failed to get kv store: {:?}", e),
@@ -108,6 +95,9 @@ async fn main() -> std::io::Result<()> {
             )
             .service(
                 web::resource("/peers/{interface_name").route(web::delete().to(handle_remove_peer)),
+            )
+            .service(
+                web::resource("/peers/provision/{interface_name").route(web::post().to(handle_provision_peer)),
             )
             .service(web::resource("/error").to(|| async {
                 web_error::InternalError::new(

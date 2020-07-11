@@ -48,9 +48,14 @@ pub async fn handle_get_interface(info: web::Path<String>) -> HttpResponse {
             let resp = GetInterfaceResponse { interface: info };
             HttpResponse::Ok().json(resp)
         }
-        Err(e) => HttpResponse::InternalServerError()
+        Err(e) => 
+        {
+            error!("failed to get interface: {:}?", e);
+            HttpResponse::InternalServerError()
             .reason("failed to get interface")
-            .finish(),
+            .finish()
+        }
+        
     }
 }
 

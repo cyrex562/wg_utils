@@ -1,6 +1,6 @@
 use crate::defines::{WgInterface, WgcError, TEMPLATES};
 
-use actix_web::web;
+
 // use kv::Msgpack;
 
 use log::{debug, error, info, warn};
@@ -298,7 +298,8 @@ fn unix_copy_interface_file(ifc_cfg_tmp_path: &str, ifc_cfg_wg_path: &str) -> Re
     }
 }
 
-fn unix_bring_ifc_up(ifc_cfg_wg_path: &str) -> Result<(), WgcError> {
+#[cfg(target_family = "unix")]
+fn bring_ifc_up(ifc_cfg_wg_path: &str) -> Result<(), WgcError> {
     debug!("bringing up wg interface");
     let output = Command::new("sudo")
         .arg("wg-quick")
@@ -325,7 +326,8 @@ fn unix_bring_ifc_up(ifc_cfg_wg_path: &str) -> Result<(), WgcError> {
     }
 }
 
-fn win_bring_ifc_up(ifc_cfg_tmp_path: &str) -> Result<(), WgcError> {
+#[cfg(target_family="windows")]
+fn bring_ifc_up(ifc_cfg_tmp_path: &str) -> Result<(), WgcError> {
     debug!("bringing interface up");
     let output = Command::new("C:\\Program Files\\Wireguard\\wireguard.exe")
         .arg("/installtunnelservice")
@@ -420,11 +422,7 @@ pub fn create_interface(
     unix_copy_interface_file(&ifc_cfg_tmp_path_str, &ifc_cfg_wg_path)?;
 
     // f.map_err(|e| MyCustomError::FileOpenError(e))?;
-    #[cfg(target_family = "unix")]
-    unix_bring_ifc_up(&ifc_cfg_wg_path)?;
-
-    #[cfg(target_family = "windows")]
-    win_bring_ifc_up(&ifc_cfg_tmp_path_str)?;
+    bring_ifc_up(&ifc_cfg_wg_path)?;
 
     info!("interface {} created", &ifc_name);
     Ok(ifc_conf_data)
