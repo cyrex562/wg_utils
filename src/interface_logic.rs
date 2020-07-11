@@ -1,6 +1,5 @@
 use crate::defines::{WgInterface, WgcError, TEMPLATES};
 
-
 // use kv::Msgpack;
 
 use log::{debug, error, info, warn};
@@ -16,11 +15,7 @@ use tera::Context;
 ///
 /// Generate an interface configuration
 ///
-pub fn gen_interface_conf(
-    private_key: &str,
-    address: &str,
-    listen_port: &u32,
-) -> Result<String, WgcError> {
+pub fn gen_interface_conf(private_key: &str, address: &str, listen_port: &u32) -> Result<String, WgcError> {
     let key_str = private_key;
     let key_part = key_str.get(0..3).unwrap();
     debug!(
@@ -241,7 +236,10 @@ pub fn del_ifc_cfg_file(ifc_name: &str) -> Result<(), WgcError> {
 #[cfg(target_family = "windows")]
 pub fn del_ifc_cfg_file(ifc_name: &str) -> Result<(), WgcError> {
     let ifc_cfg_file = format!("{}", ifc_name);
-    let ifc_cfg_wg_path = format!("C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\WireGuard\\Configurations\\{}", ifc_cfg_file);
+    let ifc_cfg_wg_path = format!(
+        "C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\WireGuard\\Configurations\\{}",
+        ifc_cfg_file
+    );
 
     debug!("checking if interface exists");
     if Path::new(&ifc_cfg_wg_path).exists() {
@@ -251,10 +249,7 @@ pub fn del_ifc_cfg_file(ifc_name: &str) -> Result<(), WgcError> {
                 return Ok(());
             }
             Err(e) => {
-                error!(
-                    "failed to delete interface file: {}: {:?}",
-                    ifc_cfg_wg_path, e
-                );
+                error!("failed to delete interface file: {}: {:?}", ifc_cfg_wg_path, e);
                 return Err(WgcError {
                     message: String::from("failed to delete interface file"),
                 });
@@ -326,7 +321,7 @@ fn bring_ifc_up(ifc_cfg_wg_path: &str) -> Result<(), WgcError> {
     }
 }
 
-#[cfg(target_family="windows")]
+#[cfg(target_family = "windows")]
 fn bring_ifc_up(ifc_cfg_tmp_path: &str) -> Result<(), WgcError> {
     debug!("bringing interface up");
     let output = Command::new("C:\\Program Files\\Wireguard\\wireguard.exe")
@@ -350,10 +345,7 @@ fn bring_ifc_up(ifc_cfg_tmp_path: &str) -> Result<(), WgcError> {
     Ok(())
 }
 
-pub fn write_ifc_config_to_file(
-    ifc_cfg_tmp_path: &str,
-    ifc_cfg_data: &str,
-) -> Result<(), WgcError> {
+pub fn write_ifc_config_to_file(ifc_cfg_tmp_path: &str, ifc_cfg_data: &str) -> Result<(), WgcError> {
     debug!("creating interface config temp file");
     let mut file = match File::create(&ifc_cfg_tmp_path) {
         Ok(f) => f,
@@ -398,7 +390,10 @@ pub fn create_interface(
     #[cfg(target_family = "unix")]
     let ifc_cfg_wg_path = format!("/etc/wireguard/{}", ifc_cfg_file);
     #[cfg(target_family = "windows")]
-    let ifc_cfg_wg_path = format!("C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\WireGuard\\Configurations\\{}", ifc_cfg_file);
+    let ifc_cfg_wg_path = format!(
+        "C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\WireGuard\\Configurations\\{}",
+        ifc_cfg_file
+    );
 
     let mut wg_ifc = WgInterface::default();
     wg_ifc.config_file_path = ifc_cfg_wg_path.clone();

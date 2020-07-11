@@ -5,7 +5,7 @@ use std::process::Child;
 use std::process::Command;
 use std::process::Stdio;
 use std::result::Result as std_result;
-use std::{str};
+use std::str;
 
 ///
 ///

@@ -1,0 +1,5 @@
+local_endpoint = "10.0.0.98"
+controller_port = 8020
+controller_address = "10.0.0.98"
+quiet = false
+verbose = true

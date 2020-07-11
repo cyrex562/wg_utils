@@ -17,12 +17,7 @@ pub fn add_peer(
 ) -> std_result<(), WgcError> {
     // add config to
     let mut var_name = Command::new("sudo");
-    let cmd = var_name
-        .arg("wg")
-        .arg("set")
-        .arg(ifc_name)
-        .arg("peer")
-        .arg(public_key);
+    let cmd = var_name.arg("wg").arg("set").arg(ifc_name).arg("peer").arg(public_key);
 
     if endpoint.is_some() {
         cmd.arg("endpoint").arg(endpoint.unwrap());
@@ -114,8 +109,8 @@ pub fn gen_peer_conf(
     endpoint: &Option<String>,
     keepalive: &Option<u32>,
 ) -> Result<String, WgcError> {
-    let key_str = public_key;
-    let key_part = key_str.get(0..3).unwrap();
+    // let key_str = public_key;
+    // let key_part = key_str.get(0..3).unwrap();
     let set_endpoint = endpoint.is_some();
     let ep = endpoint.clone().unwrap_or_else(|| "".to_string());
     let ka: u32 = keepalive.unwrap_or(25);
@@ -172,12 +167,7 @@ mod tests {
         assert!(pubkey_res.is_ok());
         let pubkey = pubkey_res.unwrap();
 
-        let gen_peer_res = gen_peer_conf(
-            &pubkey,
-            allowed_ips,
-            &Some(endpoint.to_string()),
-            &Some(keepalive),
-        );
+        let gen_peer_res = gen_peer_conf(&pubkey, allowed_ips, &Some(endpoint.to_string()), &Some(keepalive));
         assert!(gen_peer_res.is_ok());
         debug!("gen_peer_res: {:?}", gen_peer_res.unwrap());
     }
@@ -194,7 +184,7 @@ mod tests {
         let host_addr = "192.0.0.1/24";
         let allowed_ips = "192.0.0.0/24";
         let port = 51820;
-        let keepalive = 25;
+        // let keepalive = 25;
 
         let gen_ifc_res = gen_interface_conf(&priv_key_1, host_addr, &port);
         assert!(gen_ifc_res.is_ok());

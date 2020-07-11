@@ -1,20 +1,16 @@
 use crate::{
-    defines::{
-        GenInterfaceRequest, GenInterfaceResponse, GetInterfaceResponse, GetInterfacesResponse,
-        DFLT_WG_PORT,
-    },
+    defines::{GenInterfaceRequest, GenInterfaceResponse, GetInterfaceResponse, GetInterfacesResponse, DFLT_WG_PORT},
     gen_logic::gen_private_key,
-    interface_logic::{
-        create_interface, gen_interface_conf, get_interface, get_interfaces, remove_interface,
-    },
+    interface_logic::{create_interface, gen_interface_conf, get_interface, get_interfaces, remove_interface},
 };
-use actix_web::{web, HttpResponse, Responder};
+use actix_web::{web, HttpResponse, Responder, get, post, delete};
 use log::{debug, error, info};
 
 ///
 /// Gets a list of Wireguard interfaces present on the system
 ///
-pub async fn handle_get_interfaces() -> HttpResponse {
+#[get("/interfaces")]
+pub async fn handle_get_interfaces() -> impl Responder {
     // TODO: parse output into proper JSON object
     match get_interfaces() {
         Ok(ifcs) => {
@@ -33,49 +29,43 @@ pub async fn handle_get_interfaces() -> HttpResponse {
 ///
 /// Gets information about a specific interface
 ///
-pub async fn handle_get_interface(info: web::Path<String>) -> HttpResponse {
+#[get("/interfaces/{interface_name}")]
+pub async fn handle_get_interface(interface_name: web::Path<String>) -> impl Responder {
     // todo: validate interface name
-    debug!("handle get interface: info: {:?}", info);
-    let interface_name = info;
+    debug!("handle get interface: info: {:?}", interface_name);
     info!(
         "request interface info for interface with name: {}",
         interface_name.clone()
     );
 
-    match get_interface(&interface_name) {
+    match get_interface(&interface_name.to_string()) {
         Ok(info) => {
             debug!("interface info: \"{}\"", &info);
             let resp = GetInterfaceResponse { interface: info };
             HttpResponse::Ok().json(resp)
         }
-        Err(e) => 
-        {
+        Err(e) => {
             error!("failed to get interface: {:}?", e);
             HttpResponse::InternalServerError()
-            .reason("failed to get interface")
-            .finish()
+                .reason("failed to get interface")
+                .finish()
         }
-        
     }
 }
 
 ///
 /// Route that handles requests to generate an interface config
 ///
-pub async fn handle_gen_ifc_cfg(info: web::Json<GenInterfaceRequest>) -> impl Responder {
-    let ifc_req = info.0;
-
-    let priv_key = ifc_req
-        .private_key
-        .unwrap_or_else(|| gen_private_key().unwrap());
+#[post("/interfaces")]
+pub async fn handle_gen_ifc_cfg(req: web::Json<GenInterfaceRequest>) -> impl Responder {
+    let ifc_req = req.0;
+    let priv_key = ifc_req.private_key.unwrap_or_else(|| gen_private_key().unwrap());
     let port = ifc_req.listen_port.unwrap_or(DFLT_WG_PORT);
     // TODO: handle dns, mut, table, pre/post up/down
     match gen_interface_conf(&priv_key, &ifc_req.address, &port) {
         Ok(conf) => {
             debug!("generated interface configuration:\"\n{}\"", &conf);
-            let resp = GenInterfaceResponse {
-                interface_config: conf,
-            };
+            let resp = GenInterfaceResponse { interface_config: conf };
             HttpResponse::Ok().json(resp)
         }
         Err(e) => {
@@ -90,16 +80,14 @@ pub async fn handle_gen_ifc_cfg(info: web::Json<GenInterfaceRequest>) -> impl Re
 ///
 /// Route handler for creating a Wireguard interface
 ///
+#[get("/interface/{interface_name}")]
 pub async fn handle_create_interface(
-    path: web::Path<String>,
-    info: web::Json<GenInterfaceRequest>,
-    web_store: web::Data<kv::Store>,
+    interface_name: web::Path<String>,
+    gen_ifc_req: web::Json<GenInterfaceRequest>,
 ) -> HttpResponse {
-    let req = info.0;
-    let private_key = req
-        .private_key
-        .unwrap_or_else(|| gen_private_key().unwrap());
-    let ifc_name = path.to_string();
+    let req = gen_ifc_req.0;
+    let private_key = req.private_key.unwrap_or_else(|| gen_private_key().unwrap());
+    let ifc_name = interface_name.to_string();
     let port = req.listen_port.unwrap_or(DFLT_WG_PORT);
 
     match create_interface(&ifc_name, &req.address, &port, &private_key) {
@@ -119,6 +107,7 @@ pub async fn handle_create_interface(
 ///
 /// Route handler for removing an interface
 ///
+#[delete("/interface/{name}")]
 pub async fn handle_remove_interface(info: web::Path<String>) -> HttpResponse {
     let interface_name = info.to_string();
     info!("request  remove interface with name: {}", &interface_name);
@@ -137,6 +126,10 @@ pub async fn handle_remove_interface(info: web::Path<String>) -> HttpResponse {
     }
 }
 
+pub fn init(cfg: &mut web::ServiceConfig) {
+    
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,8 +140,7 @@ mod tests {
     async fn test_handle_get_interfaces() {
         init_logger();
         // todo: create/add interfaces and verify they exist in the returned list
-        let mut app =
-            test::init_service(App::new().route("/", web::get().to(handle_get_interfaces))).await;
+        let mut app = test::init_service(App::new().route("/", web::get().to(handle_get_interfaces))).await;
         let req = test::TestRequest::get().uri("/").to_request();
         let resp = test::call_service(&mut app, req).await;
         debug!("response: {:?}", resp);
@@ -177,10 +169,8 @@ mod tests {
 
         let route_str = format!(r#"/{}"#, &ifc_name);
 
-        let mut app = test::init_service(
-            App::new().route("/{interface_name}", web::get().to(handle_get_interface)),
-        )
-        .await;
+        let mut app =
+            test::init_service(App::new().route("/{interface_name}", web::get().to(handle_get_interface))).await;
         let req = test::TestRequest::get().uri(&route_str).to_request();
         let resp = test::call_service(&mut app, req).await;
         debug!("response: {:?}", resp);
@@ -197,7 +187,7 @@ mod tests {
         assert!(pk_res.is_ok());
         let private_key = pk_res.unwrap();
 
-        let ifc_name = "test_ifc_1";
+        // let ifc_name = "test_ifc_1";
         let address = "192.0.0.1/24";
         let listen_port = 52810;
 

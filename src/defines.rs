@@ -4,29 +4,10 @@ use std::error::Error;
 use std::fmt;
 use tera::Tera;
 
-pub const DEF_CONTROLLER_PORT: &str = "8120";
-pub const DEF_CONTROLLER_ADDR: &str = "127.0.0.1";
 pub const DFLT_WG_PORT: u32 = 51820;
 pub const DFLT_KEEPALIVE: u32 = 25;
 pub const DFLT_CONFIG_FILE: &str = "./config.toml";
-pub const DB_FILE = "kv.store"
-
-// #[derive(Debug)]
-// struct SuperError {
-//     side: SuperErrorSideKick,
-// }
-
-// impl fmt::Display for SuperError {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "SuperError is here!")
-//     }
-// }
-
-// impl Error for SuperError {
-//     fn source(&self) -> Option<&(dyn Error + 'static)> {
-//         Some(&self.side)
-//     }
-// }
+pub const DB_FILE: &str = "kv.store";
 
 ///
 /// Custom error thrown by functions
@@ -136,7 +117,6 @@ pub struct WgInterface {
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct Config {
     pub local_endpoint: String,
-    pub interfaces: Vec<WgInterface>,
     pub controller_port: u32,
     pub controller_address: String,
     pub quiet: bool,

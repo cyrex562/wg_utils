@@ -1,0 +1,324 @@
+openapi: 3.0.0
+info:
+  title: Wireguard Controller API
+  description: REST API spec for the WG Controller.
+  version: 0.1.0
+components:
+  schemas:
+    Config:
+      type: object
+      properties:
+        local_endpoint:
+          type: string
+        controller_port:
+          type: integer
+        controller_address:
+          type: string
+        quiet:
+          type: boolean
+        verbose:
+          type: boolean
+    GenPubKeyRequest:
+      type: object
+      properties:
+        private_key:
+          type: string
+    GenPrivKeyResponse:
+      type: object
+      properties:
+        private_key:
+          type: string
+    GenPubKeyResponse:
+      type: object
+      properties:
+        public_key:
+          type: string
+    GetInterfacesResponse:
+      type: object
+      properties:
+        interfaces:
+          type: string
+    GetInterfaceResponse:
+      type: object
+      properties:
+        interfaces:
+          type: string
+    GenInterfaceRequest:
+      type: object
+      properties:
+        private_key:
+          type: string
+        address:
+          type: string
+        listen_port:
+          type: string
+        dns:
+          type: string
+        mtu:
+          type: string
+        table:
+          type: string
+        pre_up:
+          type: string
+        post_up:
+          type: string
+        pre_down:
+          type: string
+        post_down:
+          type: string
+    GenInterfaceResponse:
+      type: object
+      properties:
+        interface_config: 
+          type: string
+    GenPeerRequest:
+      type: object
+      properties:
+        endpoint:
+          type: string
+        public_key:
+          type: string
+        allowed_ips:
+          type: string
+        persistent_keepalive:
+          type: string
+    GenPeerResponse:
+      type: object
+      properties:
+        peer_conf:
+          type: string
+    RemovePeerRequest:
+      type: object
+      properties:
+        public_key: 
+          type: string
+    ProvisionPeerRequest:
+      type: object
+      required:
+        - remote_allowed_ips
+        - local_allowed_ips
+        - address
+        - local_endpoint
+      properties:
+        remote_allowed_ips:
+          type: array
+          items:
+            type: string
+        local_allowed_ips:
+          type: array
+          items:
+            type: string
+        address:
+          type: string
+        listen_port:
+          type: integer
+        table:
+          type: string
+        dns:
+          type: string
+        mtu:
+          type: string
+        remote_endpoint:
+          type: string
+        local_endpoint:
+          type: string
+        keepalive:
+          type: integer
+    ProvisionPeerResponse:
+      type: object
+      properties:
+        interface_config:
+          type: string
+paths:
+  /interfaces:
+    get:
+      summary: get a list of interfaces
+      responses:
+        '200':
+          description: retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetInterfacesResponse'
+    post:
+      summary: generate an interface configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenInterfaceRequest'
+      responses:
+        '200':
+          description: a generated interface configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenInterfaceResponse'
+  /utils/gen_pub_key:
+    post:
+        summary: generate a public key
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenPubKeyRequest'
+        responses: 
+          '201':
+            description: Created
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/GenPubKeyResponse'
+  /utils/gen_private_key:
+    get:
+      summary: generate a WG private key
+      responses: 
+        '200':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  private_key:
+                    type: string
+  /interfaces/{interface_name}:
+    get:
+      summary: get information about an existing interface
+      parameters:
+        - in: path
+          name: interface_name
+          required: true
+          schema: 
+            type: string
+            minimum: 1
+          description: the name of the interface
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  interface:
+                    type: string
+    post:
+      summary: create an interface
+      parameters:
+        - in: path
+          name: interface_name
+          required: true
+          schema: 
+            type: string
+            minimum: 1
+          description: the name of the interface
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenInterfaceRequest'
+      responses:
+        '200':
+          description: The interface weas created
+    delete:
+      summary: delete/remove an interface
+      parameters:
+        - in: path
+          name: interface_name
+          required: true
+          schema: 
+            type: string
+            minimum: 1
+          description: the name of the interface
+      responses:
+        '200':
+          description: The interface was deleted/removed
+  /peers:
+    post:
+      summary: generate a peer configuration
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenPeerRequest'
+      responses:
+        '200':
+          description: The peer configuration was generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenPeerResponse'
+  /peers/{interface_name}:
+    post:
+      summary: add peer to interface
+      parameters:
+        - in: path
+          name: interface_name
+          required: true
+          schema: 
+            type: string
+            minimum: 1
+          description: the name of the interface
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenPeerRequest'
+      responses:
+        '200': 
+          description: The peer was added to the interface.
+    delete:
+      summary: delete peer from interface
+      parameters:
+        - in: path
+          name: interface_name
+          required: true
+          schema: 
+            type: string
+            minimum: 1
+          description: the name of the interface
+      requestBody:
+          content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/GenPeerRequest'
+      responses:
+        '200':
+          description: The peer was removed from the interface.
+  /peers/provision/{interface_name}:
+    post:
+      summary: generate peer interface data and add the peer to the interface, returning a config block to be used in a peer-side configuration file.
+      parameters:
+        - in: path
+          name: interface_name
+          required: true
+          schema: 
+            type: string
+            minimum: 1
+          description: the name of the interface
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProvisionPeerRequest'
+      responses:
+        '200':
+          description: The peer was provisioned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProvisionPeerResult'
+  /config:
+    get:
+      summary: Get the contents of the current controller configuration
+      responses:
+        '200':
+          description: Config retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Config'
+

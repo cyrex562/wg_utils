@@ -57,8 +57,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_handle_gen_priv_key() {
-        let mut app =
-            test::init_service(App::new().route("/", web::get().to(handle_gen_priv_key))).await;
+        let mut app = test::init_service(App::new().route("/", web::get().to(handle_gen_priv_key))).await;
         let req = test::TestRequest::get().uri("/").to_request();
         let resp: GenPrivKeyResponse = test::read_response_json(&mut app, req).await;
         println!("response: {:?}", resp);
