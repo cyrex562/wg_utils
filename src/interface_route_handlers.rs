@@ -134,6 +134,8 @@ pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(handle_remove_interface);
 }
 
+// https://github.com/actix/examples/blob/8dab533b40d9d0640e5c75922c9e8e292ed4a7d5/sqlx_todo/src/todo/routes.rs
+// https://github.com/actix/examples/tree/8dab533b40d9d0640e5c75922c9e8e292ed4a7d5/sqlx_todo/src
 #[cfg(test)]
 mod tests {
     use super::*;
