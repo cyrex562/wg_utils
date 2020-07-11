@@ -127,7 +127,11 @@ pub async fn handle_remove_interface(info: web::Path<String>) -> HttpResponse {
 }
 
 pub fn init(cfg: &mut web::ServiceConfig) {
-    
+    cfg.service(handle_get_interface);
+    cfg.service(handle_get_interfaces);
+    cfg.service(handle_gen_ifc_cfg);
+    cfg.service(handle_create_interface);
+    cfg.service(handle_remove_interface);
 }
 
 #[cfg(test)]
