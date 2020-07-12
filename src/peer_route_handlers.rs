@@ -1,3 +1,4 @@
+use actix_web::Responder;
 use crate::peer_logic::remove_peer;
 use crate::{
     defines::{
@@ -8,13 +9,14 @@ use crate::{
     peer_logic::{add_peer, gen_peer_conf},
 };
 
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpResponse, post, delete};
 use log::error;
 
 ///
 /// Route handler to add peer to an interface
 ///
-pub async fn handle_add_peer(info: web::Json<GenPeerRequest>, path: web::Path<String>) -> HttpResponse {
+#[post("/peers/{interface_name}")]
+pub async fn handle_add_peer(info: web::Json<GenPeerRequest>, path: web::Path<String>) -> impl Responder {
     let ifc_name = path.to_string();
     let req = info.0;
     // let keepalive = req.persistent_keepalive.unwrap_or(DFLT_KEEPALIVE);
@@ -38,7 +40,8 @@ pub async fn handle_add_peer(info: web::Json<GenPeerRequest>, path: web::Path<St
 ///
 /// Route handler to remove peer from an interface
 ///
-pub async fn handle_remove_peer(info: web::Json<GenPeerRequest>, path: web::Path<String>) -> HttpResponse {
+#[delete("/peers/{interface_name}")]
+pub async fn handle_remove_peer(info: web::Json<GenPeerRequest>, path: web::Path<String>) -> impl Responder {
     let req = info.0;
     let ifc_name = path.to_string();
 
@@ -53,7 +56,11 @@ pub async fn handle_remove_peer(info: web::Json<GenPeerRequest>, path: web::Path
     }
 }
 
-pub async fn handle_provision_peer(info: web::Json<ProvisionPeerRequest>, path: web::Path<String>) -> HttpResponse {
+///
+/// 
+///
+#[post("/peers/provision/{interface_name}")]
+pub async fn handle_provision_peer(info: web::Json<ProvisionPeerRequest>, path: web::Path<String>) -> impl Responder {
     // get which interface to add the peer to from the path
     let ifc_name = path.to_string();
 
@@ -150,7 +157,7 @@ pub async fn handle_provision_peer(info: web::Json<ProvisionPeerRequest>, path: 
 
     let final_peer_ifc_cfg = format!("{}\n{}\n\n{}", peer_ifc_config, keepalive, remote_peer_config);
     let resp = ProvisionPeerResult {
-        interface_config: final_peer_ifc_cfg,
+        interface_config: final_peer_ifc_cfg, 
     };
     // return the peer's interface config
     HttpResponse::Ok().json(resp)
@@ -159,7 +166,8 @@ pub async fn handle_provision_peer(info: web::Json<ProvisionPeerRequest>, path: 
 ///
 /// Route handler to generate a peer config
 ///
-pub async fn handle_gen_peer(info: web::Json<GenPeerRequest>) -> HttpResponse {
+#[post("/peers")]
+pub async fn handle_gen_peer(info: web::Json<GenPeerRequest>) -> impl Responder {
     let req = info.0;
 
     let mut allowed_ips = String::from("0.0.0.0/0");
@@ -181,12 +189,19 @@ pub async fn handle_gen_peer(info: web::Json<GenPeerRequest>) -> HttpResponse {
     }
 }
 
+pub fn init(cfg: &mut web::ServiceConfig) {
+    cfg.service(handle_gen_peer);
+    cfg.service(handle_provision_peer);
+    cfg.service(handle_remove_peer);
+    cfg.service(handle_add_peer);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::interface_logic::{create_interface, remove_interface};
     use crate::utils::init_logger;
-    use actix_web::{test, web, App};
+    use actix_web::{test, App};
     use log::debug;
 
     #[actix_rt::test]
@@ -209,7 +224,7 @@ mod tests {
         let ifc = ci_res.unwrap();
         debug!("create interface: {:?}", ifc);
 
-        let path = format!("/{}", ifc_name);
+        let path = format!("/peers/{}", ifc_name);
 
         let pk_res_2 = gen_private_key();
         assert!(pk_res_2.is_ok());
@@ -224,16 +239,16 @@ mod tests {
 
         let mut app = test::init_service(
             App::new()
-                .route("/{interface}", web::post().to(handle_add_peer))
-                .route("/{interface}", web::delete().to(handle_remove_peer)),
-        )
-        .await;
+            .service(handle_add_peer)
+            .service(handle_remove_peer)
+        ).await;
         let gen_peer_req = GenPeerRequest {
             endpoint: None,
             public_key: peer_pub_key.clone(),
             allowed_ips: allowed_ips,
             persistent_keepalive: None,
         };
+
         let req = test::TestRequest::post()
             .uri(&path)
             .set_json(&gen_peer_req)
@@ -301,9 +316,13 @@ mod tests {
             keepalive,
         };
 
-        let path = format!("/{}", ifc_name);
+        let path = format!("/peers/provision/{}", ifc_name);
 
-        let mut app = test::init_service(App::new().route("/{interface}", web::post().to(handle_provision_peer))).await;
+        let mut app = test::init_service(
+            App::new()
+                .service(handle_provision_peer)
+        ).await;
+
         let prov_peer_req = test::TestRequest::post()
             .uri(&path)
             .set_json(&prov_peer_req_obj)

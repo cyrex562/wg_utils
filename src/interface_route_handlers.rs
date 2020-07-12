@@ -80,7 +80,7 @@ pub async fn handle_gen_ifc_cfg(req: web::Json<GenInterfaceRequest>) -> impl Res
 ///
 /// Route handler for creating a Wireguard interface
 ///
-#[get("/interface/{interface_name}")]
+#[post("/interfaces/{interface_name}")]
 pub async fn handle_create_interface(
     interface_name: web::Path<String>,
     gen_ifc_req: web::Json<GenInterfaceRequest>,
@@ -107,8 +107,8 @@ pub async fn handle_create_interface(
 ///
 /// Route handler for removing an interface
 ///
-#[delete("/interface/{name}")]
-pub async fn handle_remove_interface(info: web::Path<String>) -> HttpResponse {
+#[delete("/interfaces/{name}")]
+pub async fn handle_remove_interface(info: web::Path<String>) -> impl Responder {
     let interface_name = info.to_string();
     info!("request  remove interface with name: {}", &interface_name);
 
@@ -140,14 +140,15 @@ pub fn init(cfg: &mut web::ServiceConfig) {
 mod tests {
     use super::*;
     use crate::utils::init_logger;
-    use actix_web::{test, web, App};
+    use actix_web::{test, App};
 
     #[actix_rt::test]
     async fn test_handle_get_interfaces() {
         init_logger();
         // todo: create/add interfaces and verify they exist in the returned list
-        let mut app = test::init_service(App::new().route("/", web::get().to(handle_get_interfaces))).await;
-        let req = test::TestRequest::get().uri("/").to_request();
+        let mut app = test::init_service(
+            App::new().service(handle_get_interfaces)).await;
+        let req = test::TestRequest::get().uri("/interfaces").to_request();
         let resp = test::call_service(&mut app, req).await;
         debug!("response: {:?}", resp);
         assert!(resp.status().is_success());
@@ -173,10 +174,9 @@ mod tests {
         let ifc = ci_res.unwrap();
         debug!("create interface: {:?}", ifc);
 
-        let route_str = format!(r#"/{}"#, &ifc_name);
+        let route_str = format!("/interfaces/{}", &ifc_name);
 
-        let mut app =
-            test::init_service(App::new().route("/{interface_name}", web::get().to(handle_get_interface))).await;
+        let mut app = test::init_service(App::new().service(handle_get_interface)).await;
         let req = test::TestRequest::get().uri(&route_str).to_request();
         let resp = test::call_service(&mut app, req).await;
         debug!("response: {:?}", resp);
@@ -187,19 +187,69 @@ mod tests {
     }
 
     #[actix_rt::test]
-    async fn test_gen_ifc_cfg() {
+    async fn test_handle_create_remove_interface() {
         init_logger();
-        let pk_res = gen_private_key();
-        assert!(pk_res.is_ok());
-        let private_key = pk_res.unwrap();
+        let mut app = test::init_service(
+            App::new()
+            .service(handle_create_interface)
+            .service(handle_remove_interface)
+        ).await;
+        let req_data = GenInterfaceRequest {
+            private_key: None,
+            address: String::from("192.0.0.1/24"),
+            listen_port: None,
+            dns: None,
+            mtu: None,
+            table: None,
+            pre_up: None,
+            post_up: None,
+            pre_down: None,
+            post_down: None,
+        };
+        let ifc_name = "wg_test_ifc_1";
+        let url = format!("/interfaces/{}", &ifc_name);
+        let req = test::TestRequest::post()
+            .uri(&url)
+            .set_json(&req_data)
+            .to_request();
+        let resp = test::call_service(&mut app, req).await;
+        debug!("create interface response:\n{:?}\n", resp);
+        assert!(resp.status().is_success());
 
-        // let ifc_name = "test_ifc_1";
+        let rem_req = test::TestRequest::delete()
+            .uri(&url)
+            .to_request();
+        let rem_resp = test::call_service(&mut app, rem_req).await;
+        debug!("resposne: {:?}", rem_resp);
+        assert!(rem_resp.status().is_success());
+    }
+
+    #[actix_rt::test]
+    async fn test_handle_gen_interface() {
+        // let ifc_name = "wg_test_ifc_1";
         let address = "192.0.0.1/24";
-        let listen_port = 52810;
-
-        let ifc_cfg_res = gen_interface_conf(&private_key, &address, &listen_port);
-        assert!(ifc_cfg_res.is_ok());
-        let ifc_cfg = ifc_cfg_res.unwrap();
-        debug!("interface config: {:?}", ifc_cfg);
+        let req_data = GenInterfaceRequest {
+            private_key: None,
+            address: address.to_string(),
+            listen_port: None,
+            dns: None,
+            mtu: None,
+            table: None,
+            pre_up: None,
+            post_up: None,
+            pre_down: None,
+            post_down: None,
+        };
+        let mut app = test::init_service(
+            App::new()
+            .service(handle_gen_ifc_cfg)
+        ).await;
+        let req = test::TestRequest::post()
+            .uri("/interfaces")
+            .set_json(&req_data)
+            .to_request();
+        let resp = test::call_service(&mut app, req).await;
+        debug!("response: {:?}", resp);
+        assert!(resp.status().is_success());
     }
 }
