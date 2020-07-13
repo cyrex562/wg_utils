@@ -7,16 +7,46 @@ mod peer_logic;
 mod peer_route_handlers;
 mod utils;
 
+use actix_web::Responder;
 use crate::defines::DFLT_CONFIG_FILE;
 use actix_files as fs;
 use actix_web::http::{header};
 use std::io::Read;
-use actix_web::{guard, middleware, web, App, HttpRequest, HttpResponse, HttpServer};
+use actix_web::{guard, middleware, web, App, HttpRequest, HttpResponse, HttpServer, get};
 use log::debug;
 use defines::{Config, DB_FILE};
 use gen_route_handlers::p404;
 use std::{fs::File, path::Path};
 use utils::init_logger;
+
+// TODO: add route to show config
+
+#[get("/swagger-client")]
+pub async fn get_swagger_client() -> impl Responder {
+    HttpResponse::Found()
+                    .header(header::LOCATION, "static/swagger_client.html")
+                    .finish()
+}
+
+#[get("/rapidoc")]
+pub async fn get_rapidoc() -> impl Responder {
+    HttpResponse::Found()
+        .header(header::LOCATION, "static/rapidoc.html")
+        .finish()
+}
+
+#[get("/")]
+pub async fn get_index() -> impl Responder {
+    HttpResponse::Found()
+        .header(header::LOCATION, "static/index.html")
+        .finish()
+}
+
+pub fn init(cfg: &mut web::ServiceConfig) {
+    cfg.service(get_swagger_client);
+    cfg.service(get_rapidoc);
+    cfg.service(get_index);
+}
 
 ///
 /// Program entry point
@@ -74,13 +104,8 @@ async fn main() -> std::io::Result<()> {
             .configure(gen_route_handlers::init)
             .configure(interface_route_handlers::init)
             .configure(peer_route_handlers::init)
+            .configure(init)
             .service(fs::Files::new("/static", "static").show_files_listing())
-            .service(web::resource("/").route(web::get().to(|req: HttpRequest| {
-                println!("{:?}", req);
-                HttpResponse::Found()
-                    .header(header::LOCATION, "static/index.html")
-                    .finish()
-            })))
             .default_service(
                 web::resource("").route(web::get().to(p404)).route(
                     web::route()

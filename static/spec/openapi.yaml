@@ -10,88 +10,147 @@ components:
       properties:
         local_endpoint:
           type: string
+          description: the address of the node as seen by remote peers, generally the internet-facing / public IP address and port.
+          example: 1.2.3.4:512820
         controller_port:
           type: integer
+          description: Port for the controller application to listen on.
+          example: 8020
         controller_address:
           type: string
+          description: Address for the controller application to listen on.
+          example: 127.0.0.1
         quiet:
           type: boolean
+          description: if true, only log messages with a severity of warning or higher will be output.
+          example: true
         verbose:
           type: boolean
+          description: if true, log messages with a severity of debug or higher will be output.
+          example: true
     GenPubKeyRequest:
       type: object
       properties:
         private_key:
           type: string
+          example: etFzAUwVFjjSiz6NPUbSspF7ruscgbTzfEVD8XAPeCc=
     GenPrivKeyResponse:
       type: object
       properties:
         private_key:
           type: string
+          example: etFzAUwVFjjSiz6NPUbSspF7ruscgbTzfEVD8XAPeCc=
     GenPubKeyResponse:
       type: object
       properties:
         public_key:
           type: string
+          example: etFzAUwVFjjSiz6NPUbSspF7ruscgbTzfEVD8XAPeCc=
     GetInterfacesResponse:
       type: object
       properties:
         interfaces:
           type: string
+          example: "wg0\nwg1\nwg2"
+          description: the raw output of the equivalent wg command; line-separated list of interfaces.
     GetInterfaceResponse:
       type: object
       properties:
-        interfaces:
+        interface:
           type: string
+          example: "interface: wg_test_1\n  public key: etFzAUwVFjjSiz6NPUbSspF7ruscgbTzfEVD8XAPeCc=\n  private key: (hidden)\n  listening port: 51820\n"
+          description: the raw output of the equivalent wg command; line separated list of interface configuration key:value pairs.
     GenInterfaceRequest:
       type: object
+      required:
+        - address
       properties:
         private_key:
           type: string
+          example: etFzAUwVFjjSiz6NPUbSspF7ruscgbTzfEVD8XAPeCc=
+          description: optional. will be generated if not provided.
         address:
           type: string
+          example: 192.0.0.1/24
+          description: required. the VPN network address of the node.
         listen_port:
           type: string
+          example: 51820
+          description: optional. will be set to 51820 if not provided.
         dns:
           type: string
+          example: 8.8.8.8
+          description: optional. a comma-separated list of DNS servers to use.
         mtu:
           type: string
+          example: 1500
+          description: optional. the MTU value for the link. Setting this higher than the lower-layer MTU will cause fragmentation.
         table:
           type: string
+          example: 1234
+          description: optional. The name of a routing table to use. Can also be 'off', in which case no routing table entries are created automatically. If not provided, the main table will be used.
         pre_up:
           type: string
+          example: /path/to/pre_up_script.sh
+          description: optional. Path to a pre-up actions script to run.
         post_up:
           type: string
+          example: /path/to/post_up_script.sh
+          description: optional. Path to a post-up options script to run.
         pre_down:
           type: string
+          example: /path/to/pre_down_script.sh
+          description: optional. Path to a pre-down options script to run.
         post_down:
           type: string
+          example: /path/to/post_down_script.sh
+          description: optional. Path to a post-down options script to run.
     GenInterfaceResponse:
       type: object
       properties:
         interface_config: 
           type: string
+          example: "[Interface]\n# Peer's virtual Address\nAddress = 192.0.0.1/24\n# Peer's listen port\nListenPort = 51820\n# Peer's private key\nPrivateKey = YHpp//OpbINWyAa5vRhxyKRvxbMRq+GKiM5W/EF76Es=\n# DNS server to use\n# DNS =\n# Routing table\n# Table = auto\n# link MTU\n# MTU =\n# Pre-Up command/script\n# PreUp =\n# Pre-Down command/script\n# PreDown =\n# Post-Up command/script\n# PostUp =\n# Post-down command/script\n# PostDown =\n# Peers\n"
+          description: Generated interface configuration block, can be pasted directly into an interface file.
     GenPeerRequest:
       type: object
+      required:
+        - public_key
+        - allowed_ips
       properties:
         endpoint:
           type: string
+          description: optional. The remote address and port of the peer. If not provided, the peer is assumed to be dynamic and the node will not attempt to connect to it directly.
+          example: 1.2.3.4:51820
         public_key:
           type: string
+          description: required. Public key derived from a generated public key.
+          example: etFzAUwVFjjSiz6NPUbSspF7ruscgbTzfEVD8XAPeCc=
         allowed_ips:
-          type: string
+          type: array          
+          items:
+            type: string
+            example: '192.168.0.0/16'
+          example:
+            - '192.168.0.0/16'
+            - '10.0.0.0/8'
+            - '172.16.0.0/12'
+          description: optional. a comma-separated list of address/masks allowed to exchange traffic.
         persistent_keepalive:
           type: string
+          example: '25'
     GenPeerResponse:
       type: object
       properties:
         peer_conf:
           type: string
+          example: "[Peer]\nEndpoint = 1.2.3.4:51820\nPublicKey = etFzAUwVFjjSiz6NPUbSspF7ruscgbTzfEVD8XAPeCc=\nAllowedIPs = 192.168.0.0/16,10.0.0.0/8\nPersistentKeepalive = 25\n"
     RemovePeerRequest:
       type: object
       properties:
         public_key: 
           type: string
+          example: etFzAUwVFjjSiz6NPUbSspF7ruscgbTzfEVD8XAPeCc=
     ProvisionPeerRequest:
       type: object
       required:
@@ -104,31 +163,52 @@ components:
           type: array
           items:
             type: string
+            example: '0.0.0.0/0'
+          description: required. traffic allowed to be routed on the interface/server node side
         local_allowed_ips:
           type: array
           items:
             type: string
+            example: '0.0.0.0/0'
+          description: required. traffic allowed to be routed from the peer to the remote interface/server.
         address:
           type: string
+          example: '192.0.0.2/24'
+          description: required. the VPN network address of the peer.
         listen_port:
           type: integer
+          example: 51820
+          description: optional. the port the peer will listen on for WG traffic
         table:
           type: string
+          example: table_a
+          description: optional. the routing table to inject routes into on the peer
         dns:
           type: string
+          example: '8.8.8.8'
+          description: optional. the dns server(s) for the peer to use.
         mtu:
           type: string
+          example: '1500'
+          description: optional. the MTU for the link between the peer and the node/server.
         remote_endpoint:
           type: string
+          example: '10.0.0.98:51820'
+          description: optional. the public IP address and listening port of the peer.
         local_endpoint:
           type: string
+          example: '10.0.0.99:51820'
+          description: required. the public IP address and listening port of the node/server/interface
         keepalive:
           type: integer
+          example: 25
+          description: optional. the keepalive transmission interval for the peer.
     ProvisionPeerResponse:
       type: object
       properties:
         interface_config:
           type: string
+          example: "[Interface]\n# Peer's virtual Address\nAddress = 192.0.0.2/32\n# Peer's listen port\nListenPort = 51820\n# Peer's private key\nPrivateKey = kBbcyBqRIf8qB3Zmtt0eYm1MtR6TuNP0Ualw+WPDzHA=\n# DNS server to use\n# DNS =\n# Routing table\n# Table = auto\n# link MTU\n# MTU =\n# Pre-Up command/script\n# PreUp =\n# Pre-Down command/script\n# PreDown =\n# Post-Up command/script\n# PostUp =\n# Post-down command/script\n# PostDown =\n# Peers\n\n25\n\n[Peer]\nEndpoint = 10.0.0.98:51820\nPublicKey = etFzAUwVFjjSiz6NPUbSspF7ruscgbTzfEVD8XAPeCc=\nAllowedIPs = 0.0.0.0/0\nPersistentKeepalive = 25\n"
 paths:
   /interfaces:
     get:
@@ -155,7 +235,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GenInterfaceResponse'
-  /utils/gen_pub_key:
+  /utils/public_key:
     post:
         summary: generate a public key
         requestBody:
@@ -171,7 +251,7 @@ paths:
               application/json:
                 schema:
                   $ref: '#/components/schemas/GenPubKeyResponse'
-  /utils/gen_private_key:
+  /utils/private_key:
     get:
       summary: generate a WG private key
       responses: 
@@ -180,10 +260,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  private_key:
-                    type: string
+                $ref: '#/components/schemas/GenPrivKeyResponse'
   /interfaces/{interface_name}:
     get:
       summary: get information about an existing interface
@@ -201,10 +278,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  interface:
-                    type: string
+                $ref: '#/components/schemas/GetInterfaceResponse'
     post:
       summary: create an interface
       parameters:
@@ -216,13 +290,19 @@ paths:
             minimum: 1
           description: the name of the interface
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/GenInterfaceRequest'
       responses:
         '200':
-          description: The interface weas created
+          description: "interface created successfully"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenInterfaceResponse'
+          
     delete:
       summary: delete/remove an interface
       parameters:
@@ -310,7 +390,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProvisionPeerResult'
+                $ref: '#/components/schemas/ProvisionPeerResponse'
   /config:
     get:
       summary: Get the contents of the current controller configuration

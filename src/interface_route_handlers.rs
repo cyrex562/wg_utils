@@ -93,7 +93,10 @@ pub async fn handle_create_interface(
     match create_interface(&ifc_name, &req.address, &port, &private_key) {
         Ok(d) => {
             debug!("interface created: {:?}", d);
-            HttpResponse::Ok().reason("interface created").finish()
+            let resp_data = GenInterfaceResponse {
+                interface_config: d.clone(),
+            };
+            HttpResponse::Ok().json(resp_data)
         }
         Err(e) => {
             error!("failed to create interface: {:?}", e);

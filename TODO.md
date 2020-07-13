@@ -8,5 +8,6 @@
 - [ ] check that an interface exists when using it as an input
 - [ ] check if a peer's IP address already exists in the interfaces file
 - [ ] basic web ui
+- [ ] return interface config when creating an interface.
 
 
