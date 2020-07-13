@@ -21,12 +21,12 @@ use utils::init_logger;
 
 // TODO: add route to show config
 
-#[get("/swagger-client")]
-pub async fn get_swagger_client() -> impl Responder {
-    HttpResponse::Found()
-                    .header(header::LOCATION, "static/swagger_client.html")
-                    .finish()
-}
+// #[get("/swagger-client")]
+// pub async fn get_swagger_client() -> impl Responder {
+//     HttpResponse::Found()
+//                     .header(header::LOCATION, "static/swagger_client.html")
+//                     .finish()
+// }
 
 #[get("/rapidoc")]
 pub async fn get_rapidoc() -> impl Responder {
@@ -43,7 +43,7 @@ pub async fn get_index() -> impl Responder {
 }
 
 pub fn init(cfg: &mut web::ServiceConfig) {
-    cfg.service(get_swagger_client);
+    // cfg.service(get_swagger_client);
     cfg.service(get_rapidoc);
     cfg.service(get_index);
 }
